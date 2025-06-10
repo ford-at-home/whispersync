@@ -1,14 +1,23 @@
+"""Lambda entry point to route transcripts to Strands agents."""
 import json
 import logging
 import os
 from importlib import import_module
 
-import boto3
+try:
+    import boto3
+except Exception:  # pragma: no cover - optional for local testing
+    boto3 = None
+
+try:
+    from strands_sdk import StrandsClient
+except Exception:  # pragma: no cover - optional for local testing
+    StrandsClient = None
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-s3 = boto3.client("s3")
+s3 = boto3.client("s3") if boto3 else None
 
 AGENT_MODULES = {
     "work": "agents.work_journal_agent",
@@ -17,15 +26,31 @@ AGENT_MODULES = {
 }
 
 
-def load_agent(agent_name):
+def load_agent(agent_name: str):
+    """Dynamically import a local agent implementation."""
     module_path = AGENT_MODULES.get(agent_name)
     if not module_path:
         raise ValueError(f"Unknown agent: {agent_name}")
-    module = import_module(module_path)
-    return module
+    return import_module(module_path)
 
 
 def invoke_agent(agent_name: str, transcript: str, bucket: str, key: str):
+    """Invoke agent via Strands SDK if available, else call locally."""
+    if StrandsClient:
+        strands = StrandsClient(region=os.environ.get("STRANDS_REGION", "us-east-1"))
+        response = strands.invoke_agent(
+            agent_name=f"{agent_name}_agent",
+            input={
+                "transcript": transcript,
+                "bucket": bucket,
+                "source_s3_key": key,
+            },
+        )
+        try:
+            return json.loads(response)
+        except Exception:
+            return response
+
     module = load_agent(agent_name)
     if hasattr(module, "handle"):
         return module.handle(transcript, bucket=bucket, s3_key=key)
@@ -33,8 +58,10 @@ def invoke_agent(agent_name: str, transcript: str, bucket: str, key: str):
 
 
 def lambda_handler(event, context):
-    logger.info("Received event: %s", json.dumps(event))
+    if s3 is None:
+        raise RuntimeError("boto3 is required for lambda_handler")
 
+    logger.info("Received event: %s", json.dumps(event))
     record = event["Records"][0]
     bucket = record["s3"]["bucket"]["name"]
     key = record["s3"]["object"]["key"]
@@ -52,8 +79,9 @@ def lambda_handler(event, context):
         logger.exception("Agent invocation failed: %s", exc)
         raise
 
-    output_key = key.replace("transcripts", "outputs").replace(".txt", "_response.json")
-    s3.put_object(Bucket=bucket, Key=output_key, Body=json.dumps(result).encode("utf-8"))
+    output_key = key.replace("transcripts/", "outputs/").replace(".txt", "_response.json")
+    body = json.dumps(result).encode("utf-8") if not isinstance(result, (bytes, bytearray)) else result
+    s3.put_object(Bucket=bucket, Key=output_key, Body=body)
     logger.info("Wrote response to %s", output_key)
 
     return {"status": "ok", "output_key": output_key}
