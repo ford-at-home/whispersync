@@ -4,6 +4,8 @@ Turns a transcript into a GitHub repository using PyGithub.
 """
 from __future__ import annotations
 
+from typing import Any, Dict
+
 import json
 import logging
 import os
@@ -34,7 +36,7 @@ def get_token() -> str:
     return response.get("SecretString", "")
 
 
-def handle(payload: dict) -> dict:
+def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Create a GitHub repository from a voice memo."""
     transcript = payload.get("transcript", "")
     bucket = payload.get("bucket")

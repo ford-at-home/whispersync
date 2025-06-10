@@ -35,7 +35,7 @@ def load_agent(agent_name: str):
     return module
 
 
-def invoke_agent(agent_name: str, payload: dict):
+def invoke_agent(agent_name: str, payload: dict) -> dict:
     """Invoke agent via Strands SDK if available, else call locally."""
     if StrandsClient:
         strands = StrandsClient(region=os.environ.get("STRANDS_REGION", "us-east-1"))
@@ -56,6 +56,7 @@ def invoke_agent(agent_name: str, payload: dict):
 
 
 def lambda_handler(event, context):
+    """Entry point for AWS Lambda to route transcripts."""
     if s3 is None:
         raise RuntimeError("boto3 is required for lambda_handler")
     logger.info("Received event: %s", json.dumps(event))

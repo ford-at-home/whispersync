@@ -4,6 +4,8 @@ Stores personal memory transcripts as JSON lines in S3 and tags sentiment.
 """
 from __future__ import annotations
 
+from typing import Any, Dict
+
 import json
 import logging
 import datetime
@@ -16,7 +18,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
-def handle(payload: dict) -> dict:
+
+def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Archive a memory transcript to S3."""
     transcript = payload.get("transcript", "")
     bucket = payload.get("bucket")
@@ -32,5 +35,10 @@ def handle(payload: dict) -> dict:
 
     key = f"memories/{now}.jsonl"
     logger.info("Writing memory record to %s", key)
-    s3.put_object(Bucket=bucket, Key=key, Body=(json.dumps(record) + "\n").encode("utf-8"))
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=(json.dumps(record) + "\n").encode("utf-8"),
+        ContentType="application/json",
+    )
     return {"memory_key": key}

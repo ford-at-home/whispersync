@@ -4,6 +4,8 @@ Appends transcripts to a weekly work log stored in S3 and returns a summary.
 """
 from __future__ import annotations
 
+from typing import Any, Dict
+
 import datetime
 import logging
 try:
@@ -15,7 +17,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
-def handle(payload: dict) -> dict:
+def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Append transcript to weekly log and return a short summary."""
     transcript = payload.get("transcript", "")
     bucket = payload.get("bucket")
@@ -34,7 +36,12 @@ def handle(payload: dict) -> dict:
         content = ""
 
     content += f"\n[{now.isoformat()}] {transcript}\n"
-    s3.put_object(Bucket=bucket, Key=log_key, Body=content.encode("utf-8"))
+    s3.put_object(
+        Bucket=bucket,
+        Key=log_key,
+        Body=content.encode("utf-8"),
+        ContentType="text/plain",
+    )
 
     # Placeholder summary
     summary = f"Logged work entry on {now.date()}"
