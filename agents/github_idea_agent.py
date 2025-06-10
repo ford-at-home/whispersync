@@ -34,11 +34,8 @@ def get_token() -> str:
     return response.get("SecretString", "")
 
 
-def handle(payload: dict) -> dict:
+def handle(transcript: str, *, bucket: str, s3_key: str) -> dict:
     """Create a GitHub repository from a voice memo."""
-    transcript = payload.get("transcript", "")
-    bucket = payload.get("bucket")
-    s3_key = payload.get("source_s3_key")
     if s3 is None or sm is None:
         logger.warning("boto3 unavailable; returning dry-run response")
         return {"repo": "dry-run"}
@@ -46,6 +43,7 @@ def handle(payload: dict) -> dict:
     if Github is None:
         logger.warning("PyGithub unavailable; returning dry-run response")
         return {"repo": "dry-run"}
+
     token = get_token()
     gh = Github(token)
     user = gh.get_user()
@@ -64,7 +62,11 @@ def handle(payload: dict) -> dict:
 
     history_key = "github/history.jsonl"
     logger.info("Appending repo metadata to %s", history_key)
-    s3.put_object(Bucket=bucket, Key=history_key, Body=(json.dumps(metadata) + "\n").encode("utf-8"),
-                  ContentType="application/json")
+    s3.put_object(
+        Bucket=bucket,
+        Key=history_key,
+        Body=(json.dumps(metadata) + "\n").encode("utf-8"),
+        ContentType="application/json"
+    )
 
     return metadata

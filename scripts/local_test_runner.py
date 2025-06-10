@@ -20,13 +20,17 @@ def main(path: str, bucket: str = "local-bucket") -> None:
     with open(path, "r") as f:
         transcript = f.read()
 
-    payload = {
-        "transcript": transcript,
-        "bucket": bucket,
-        "source_s3_key": key,
-    }
+    try:
+        result = invoke_agent(agent_name, transcript, bucket, key)
+    except TypeError:
+        # fallback to legacy payload-style signature if needed
+        payload = {
+            "transcript": transcript,
+            "bucket": bucket,
+            "source_s3_key": key,
+        }
+        result = invoke_agent(agent_name, payload)
 
-    result = invoke_agent(agent_name, payload)
     print(json.dumps(result, indent=2))
 
 
