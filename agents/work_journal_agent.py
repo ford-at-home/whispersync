@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import datetime
 import logging
-
 try:
     import boto3
 except Exception:  # pragma: no cover - optional for local testing
@@ -16,17 +15,16 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
-
-
-def handle(transcript: str, *, bucket: str, s3_key: str | None = None) -> dict:
+def handle(payload: dict) -> dict:
     """Append transcript to weekly log and return a short summary."""
+    transcript = payload.get("transcript", "")
+    bucket = payload.get("bucket")
     if s3 is None:
         logger.warning("boto3 unavailable; returning dry-run response")
         return {"log_key": "dry-run", "summary": transcript[:50]}
-
     now = datetime.datetime.utcnow()
     year, week, _ = now.isocalendar()
-    log_key = s3_key or f"work_journal/{year}-W{week}.txt"
+    log_key = f"work_journal/{year}-W{week}.txt"
 
     logger.info("Appending work log to %s", log_key)
     try:
@@ -38,5 +36,6 @@ def handle(transcript: str, *, bucket: str, s3_key: str | None = None) -> dict:
     content += f"\n[{now.isoformat()}] {transcript}\n"
     s3.put_object(Bucket=bucket, Key=log_key, Body=content.encode("utf-8"))
 
+    # Placeholder summary
     summary = f"Logged work entry on {now.date()}"
     return {"log_key": log_key, "summary": summary}
