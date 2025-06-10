@@ -22,7 +22,7 @@ s3 = boto3.client("s3") if boto3 else None
 AGENT_MODULES = {
     "work": "agents.work_journal_agent",
     "memories": "agents.memory_agent",
-    "gitub_ideas": "agents.github_idea_agent",
+    "github_ideas": "agents.github_idea_agent",
 }
 
 

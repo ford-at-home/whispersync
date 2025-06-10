@@ -7,7 +7,7 @@ This project turns iPhone voice memos into intelligent workflows, automatically 
 ## 📦 Overview
 
 ### Use Case
-You record voice memos into folders like `work`, `memories`, or `gitub_ideas` on your iPhone. These are transcribed (locally or remotely), synced to S3, and processed via AWS Strands agents triggered by S3 events.
+You record voice memos into folders like `work`, `memories`, or `github_ideas` on your iPhone. These are transcribed (locally or remotely), synced to S3, and processed via AWS Strands agents triggered by S3 events.
 
 ---
 
@@ -48,7 +48,7 @@ Edit
 - Optionally classifies sentiment, theme, and key figures
 - Claude can clean up or stylize the memory
 
-### 3. `gitub_ideas` → 🐙 GitHub Agent
+### 3. `github_ideas` → 🐙 GitHub Agent
 - Creates new repos based on ideas
 - Uses Claude to generate:
 - Repo name
