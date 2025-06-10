@@ -9,19 +9,27 @@ import logging
 import os
 import time
 
-import boto3
-from github import Github
+try:
+    import boto3
+except Exception:  # pragma: no cover - optional for local testing
+    boto3 = None
+try:
+    from github import Github
+except Exception:  # pragma: no cover - optional for local testing
+    Github = None
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-s3 = boto3.client("s3")
-sm = boto3.client("secretsmanager")
+s3 = boto3.client("s3") if boto3 else None
+sm = boto3.client("secretsmanager") if boto3 else None
 
 SECRET_NAME = os.environ.get("GITHUB_SECRET_NAME", "github/personal_token")
 
 
 def get_token() -> str:
+    if sm is None:
+        raise RuntimeError("boto3 is required for github_idea_agent")
     response = sm.get_secret_value(SecretId=SECRET_NAME)
     return response.get("SecretString", "")
 
@@ -31,7 +39,13 @@ def handle(payload: dict) -> dict:
     transcript = payload.get("transcript", "")
     bucket = payload.get("bucket")
     s3_key = payload.get("source_s3_key")
+    if s3 is None or sm is None:
+        logger.warning("boto3 unavailable; returning dry-run response")
+        return {"repo": "dry-run"}
 
+    if Github is None:
+        logger.warning("PyGithub unavailable; returning dry-run response")
+        return {"repo": "dry-run"}
     token = get_token()
     gh = Github(token)
     user = gh.get_user()

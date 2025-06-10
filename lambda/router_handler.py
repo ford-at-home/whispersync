@@ -4,7 +4,10 @@ import logging
 import os
 from importlib import import_module
 
-import boto3
+try:
+    import boto3
+except Exception:  # pragma: no cover - optional for local testing
+    boto3 = None
 
 try:
     from strands_sdk import StrandsClient
@@ -14,7 +17,7 @@ except Exception:  # pragma: no cover - library may not be installed
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-s3 = boto3.client("s3")
+s3 = boto3.client("s3") if boto3 else None
 
 AGENT_MODULES = {
     "work": "agents.work_journal_agent",
@@ -53,6 +56,8 @@ def invoke_agent(agent_name: str, payload: dict):
 
 
 def lambda_handler(event, context):
+    if s3 is None:
+        raise RuntimeError("boto3 is required for lambda_handler")
     logger.info("Received event: %s", json.dumps(event))
 
     record = event["Records"][0]
