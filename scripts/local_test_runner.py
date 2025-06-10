@@ -14,23 +14,25 @@ invoke_agent = import_module("lambda.router_handler").invoke_agent
 
 
 def main(path: str, bucket: str = "local-bucket") -> None:
-    key = str(Path(path))
-    agent_name = key.split("/")[1]
+    """Execute the selected agent with a local transcript file."""
+    path_obj = Path(path)
+    key = str(path_obj)
+    parts = path_obj.parts
+    if "transcripts" in parts:
+        agent_name = parts[parts.index("transcripts") + 1]
+    else:
+        agent_name = path_obj.parent.name
 
     with open(path, "r") as f:
         transcript = f.read()
 
-    try:
-        result = invoke_agent(agent_name, transcript, bucket, key)
-    except TypeError:
-        # fallback to legacy payload-style signature if needed
-        payload = {
-            "transcript": transcript,
-            "bucket": bucket,
-            "source_s3_key": key,
-        }
-        result = invoke_agent(agent_name, payload)
+    payload = {
+        "transcript": transcript,
+        "bucket": bucket,
+        "source_s3_key": key,
+    }
 
+    result = invoke_agent(agent_name, payload)
     print(json.dumps(result, indent=2))
 
 

@@ -4,10 +4,11 @@ Stores personal memory transcripts as JSON lines in S3 and tags sentiment.
 """
 from __future__ import annotations
 
+from typing import Any, Dict
+
 import json
 import logging
 import datetime
-
 try:
     import boto3
 except Exception:  # pragma: no cover - optional for local testing
@@ -18,13 +19,13 @@ logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
 
-
-def handle(transcript: str, *, bucket: str, s3_key: str | None = None) -> dict:
+def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Archive a memory transcript to S3."""
+    transcript = payload.get("transcript", "")
+    bucket = payload.get("bucket")
     if s3 is None:
         logger.warning("boto3 unavailable; returning dry-run response")
         return {"memory_key": "dry-run"}
-
     now = datetime.datetime.utcnow().isoformat()
     record = {
         "timestamp": now,
@@ -32,7 +33,12 @@ def handle(transcript: str, *, bucket: str, s3_key: str | None = None) -> dict:
         "sentiment": "neutral",  # placeholder
     }
 
-    key = s3_key or f"memories/{now}.jsonl"
+    key = f"memories/{now}.jsonl"
     logger.info("Writing memory record to %s", key)
-    s3.put_object(Bucket=bucket, Key=key, Body=(json.dumps(record) + "\n").encode("utf-8"))
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=(json.dumps(record) + "\n").encode("utf-8"),
+        ContentType="application/json",
+    )
     return {"memory_key": key}

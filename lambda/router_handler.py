@@ -11,7 +11,7 @@ except Exception:  # pragma: no cover - optional for local testing
 
 try:
     from strands_sdk import StrandsClient
-except Exception:  # pragma: no cover - optional for local testing
+except Exception:  # pragma: no cover - library may not be installed
     StrandsClient = None
 
 logger = logging.getLogger()
@@ -22,7 +22,7 @@ s3 = boto3.client("s3") if boto3 else None
 AGENT_MODULES = {
     "work": "agents.work_journal_agent",
     "memories": "agents.memory_agent",
-    "gitub_ideas": "agents.github_idea_agent",
+    "github_ideas": "agents.github_idea_agent",
 }
 
 
@@ -31,37 +31,36 @@ def load_agent(agent_name: str):
     module_path = AGENT_MODULES.get(agent_name)
     if not module_path:
         raise ValueError(f"Unknown agent: {agent_name}")
-    return import_module(module_path)
+    module = import_module(module_path)
+    return module
 
 
-def invoke_agent(agent_name: str, transcript: str, bucket: str, key: str):
+def invoke_agent(agent_name: str, payload: dict) -> dict:
     """Invoke agent via Strands SDK if available, else call locally."""
     if StrandsClient:
         strands = StrandsClient(region=os.environ.get("STRANDS_REGION", "us-east-1"))
         response = strands.invoke_agent(
             agent_name=f"{agent_name}_agent",
-            input={
-                "transcript": transcript,
-                "bucket": bucket,
-                "source_s3_key": key,
-            },
+            input=payload,
         )
         try:
             return json.loads(response)
         except Exception:
             return response
 
+    # Fallback: import the agent locally
     module = load_agent(agent_name)
     if hasattr(module, "handle"):
-        return module.handle(transcript, bucket=bucket, s3_key=key)
+        return module.handle(payload)
     raise AttributeError(f"Agent {agent_name} missing handle()")
 
 
 def lambda_handler(event, context):
+    """Entry point for AWS Lambda to route transcripts."""
     if s3 is None:
         raise RuntimeError("boto3 is required for lambda_handler")
-
     logger.info("Received event: %s", json.dumps(event))
+
     record = event["Records"][0]
     bucket = record["s3"]["bucket"]["name"]
     key = record["s3"]["object"]["key"]
@@ -73,8 +72,14 @@ def lambda_handler(event, context):
     transcript = obj["Body"].read().decode()
     logger.info("Transcript downloaded, %d bytes", len(transcript))
 
+    payload = {
+        "transcript": transcript,
+        "source_s3_key": key,
+        "bucket": bucket,
+    }
+
     try:
-        result = invoke_agent(agent_name, transcript, bucket, key)
+        result = invoke_agent(agent_name, payload)
     except Exception as exc:
         logger.exception("Agent invocation failed: %s", exc)
         raise

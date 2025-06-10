@@ -14,7 +14,7 @@
     - Stores cleaned memory narratives as `.jsonl` under `memories/`.
     - Can classify sentiment, theme and key figures.
     - Uses Claude to clean up or stylize memories.
-  - `gitub_ideas` → **GitHub Agent**
+  - `github_ideas` → **GitHub Agent**
     - Creates new repos from voice ideas.
     - Uses Claude to generate repo name, README and an initial issue list.
     - Creates repositories using PyGithub.
