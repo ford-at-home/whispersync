@@ -13,12 +13,12 @@ import time
 
 try:
     import boto3
+    from github import Github
+    from strands import tool
 except Exception:  # pragma: no cover - optional for local testing
     boto3 = None
-try:
-    from github import Github
-except Exception:  # pragma: no cover - optional for local testing
     Github = None
+    tool = None
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -36,11 +36,18 @@ def get_token() -> str:
     return response.get("SecretString", "")
 
 
-def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Create a GitHub repository from a voice memo."""
-    transcript = payload.get("transcript", "")
-    bucket = payload.get("bucket")
-    s3_key = payload.get("source_s3_key")
+@tool
+def create_github_repo(transcript: str, bucket: str, s3_key: str) -> Dict[str, Any]:
+    """Create a GitHub repository from a voice memo.
+    
+    Args:
+        transcript: The voice memo transcript describing the idea
+        bucket: The S3 bucket name for storing metadata
+        s3_key: The source S3 key of the transcript file
+        
+    Returns:
+        Dictionary containing repo and s3_source information
+    """
     if s3 is None or sm is None:
         logger.warning("boto3 unavailable; returning dry-run response")
         return {"repo": "dry-run"}
@@ -48,6 +55,7 @@ def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     if Github is None:
         logger.warning("PyGithub unavailable; returning dry-run response")
         return {"repo": "dry-run"}
+    
     token = get_token()
     gh = Github(token)
     user = gh.get_user()
@@ -70,3 +78,12 @@ def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
                   ContentType="application/json")
 
     return metadata
+
+# For backward compatibility with existing tests
+def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Legacy handler function for backward compatibility."""
+    return create_github_repo(
+        transcript=payload.get("transcript", ""),
+        bucket=payload.get("bucket", ""),
+        s3_key=payload.get("source_s3_key", "")
+    )

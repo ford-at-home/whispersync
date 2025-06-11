@@ -10,20 +10,33 @@ import datetime
 import logging
 try:
     import boto3
+    import botocore
+    from strands import tool
 except Exception:  # pragma: no cover - optional for local testing
     boto3 = None
+    botocore = None
+    tool = None
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
-def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Append transcript to weekly log and return a short summary."""
-    transcript = payload.get("transcript", "")
-    bucket = payload.get("bucket")
+
+@tool
+def append_work_log(transcript: str, bucket: str) -> Dict[str, Any]:
+    """Append transcript to weekly log and return a short summary.
+    
+    Args:
+        transcript: The work transcript to append to the log
+        bucket: The S3 bucket name where the log should be stored
+        
+    Returns:
+        Dictionary containing log_key and summary
+    """
     if s3 is None:
         logger.warning("boto3 unavailable; returning dry-run response")
         return {"log_key": "dry-run", "summary": transcript[:50]}
+    
     now = datetime.datetime.utcnow()
     year, week, _ = now.isocalendar()
     log_key = f"work_journal/{year}-W{week}.txt"
@@ -32,8 +45,14 @@ def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         existing = s3.get_object(Bucket=bucket, Key=log_key)
         content = existing["Body"].read().decode()
-    except s3.exceptions.NoSuchKey:
-        content = ""
+    except Exception as e:
+        if botocore and isinstance(e, botocore.exceptions.ClientError):
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                content = ""
+            else:
+                raise
+        else:
+            raise
 
     content += f"\n[{now.isoformat()}] {transcript}\n"
     s3.put_object(
@@ -46,3 +65,11 @@ def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Placeholder summary
     summary = f"Logged work entry on {now.date()}"
     return {"log_key": log_key, "summary": summary}
+
+# For backward compatibility with existing tests
+def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Legacy handler function for backward compatibility."""
+    return append_work_log(
+        transcript=payload.get("transcript", ""),
+        bucket=payload.get("bucket", "")
+    )
