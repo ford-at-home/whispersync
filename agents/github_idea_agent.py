@@ -1,6 +1,9 @@
 """GitHub Idea Agent.
 
-Turns a transcript into a GitHub repository using PyGithub.
+This module implements an agent that converts a spoken idea into a new
+GitHub repository.  It retrieves a personal access token from AWS
+Secrets Manager, creates a repository via the PyGithub library, and logs
+metadata about the action back to S3.
 """
 from __future__ import annotations
 
@@ -30,6 +33,7 @@ SECRET_NAME = os.environ.get("GITHUB_SECRET_NAME", "github/personal_token")
 
 
 def get_token() -> str:
+    """Retrieve the GitHub token from Secrets Manager."""
     if sm is None:
         raise RuntimeError("boto3 is required for github_idea_agent")
     response = sm.get_secret_value(SecretId=SECRET_NAME)
@@ -37,7 +41,22 @@ def get_token() -> str:
 
 
 def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Create a GitHub repository from a voice memo."""
+    """Create a GitHub repository from a voice memo.
+
+    Parameters
+    ----------
+    payload : dict
+        Expect keys ``transcript`` with the spoken idea text,
+        ``bucket`` for the destination S3 bucket and ``source_s3_key`` for
+        logging purposes.
+
+    Returns
+    -------
+    dict
+        Metadata about the created repository including the full repo
+        name and the source transcript key.  A dry-run dictionary is
+        returned when required dependencies are not available.
+    """
     transcript = payload.get("transcript", "")
     bucket = payload.get("bucket")
     s3_key = payload.get("source_s3_key")

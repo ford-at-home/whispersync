@@ -1,4 +1,9 @@
-"""Local test runner to mimic Lambda invocation."""
+"""Local test runner to mimic Lambda invocation.
+
+This utility imports the Lambda router and executes a selected agent on
+a transcript file.  It is useful for verifying agent behavior without
+deploying any AWS resources.
+"""
 from __future__ import annotations
 
 import json
@@ -14,7 +19,15 @@ invoke_agent = import_module("lambda.router_handler").invoke_agent
 
 
 def main(path: str, bucket: str = "local-bucket") -> None:
-    """Execute the selected agent with a local transcript file."""
+    """Execute the selected agent with a local transcript file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the transcript text file.
+    bucket : str, optional
+        Name of the mock S3 bucket to pass to the agent.
+    """
     path_obj = Path(path)
     key = str(path_obj)
     parts = path_obj.parts

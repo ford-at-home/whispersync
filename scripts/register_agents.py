@@ -1,4 +1,8 @@
-"""Register agents with Strands platform."""
+"""Register agents with the Strands platform.
+
+Running this script will create or update agent records so that the
+platform knows how to invoke the local implementation modules.
+"""
 from strands_sdk import register_agent
 
 register_agent(
