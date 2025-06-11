@@ -6,7 +6,7 @@ Only a short confirmation summary is generated here as a placeholder.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Dict
 
 from strands import tool
 
@@ -22,27 +22,27 @@ logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
 
-@tool
-def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
+
+@tool(name="work_journal", description="Append a work note to a weekly log and generate a short summary")
+def handle(transcript: str, bucket: str) -> Dict[str, str]:
     """Append transcript to weekly log and return a short summary.
 
-    Parameters
-    ----------
-    payload : dict
-        Contains ``transcript`` with the work note text and ``bucket`` for
-        the S3 location.
+    Args:
+        transcript: The work note text to append
+        bucket: Name of the S3 bucket where the journal lives
 
-    Returns
-    -------
-    dict
-        Path of the log file and a one-line summary string.  In dry-run
-        mode the log key is ``"dry-run"``.
+    Returns:
+        Mapping with ``log_key`` and ``summary`` of the new entry. The
+        key value is ``"dry-run"`` when AWS dependencies are unavailable.
     """
-    transcript = payload.get("transcript", "")
-    bucket = payload.get("bucket")
     if s3 is None:
         logger.warning("boto3 unavailable; returning dry-run response")
-        return {"log_key": "dry-run", "summary": transcript[:50]}
+        return {
+            "status": "success",
+            "content": [
+                {"json": {"log_key": "dry-run", "summary": transcript[:50]}}
+            ],
+        }
     now = datetime.datetime.utcnow()
     year, week, _ = now.isocalendar()
     log_key = f"work_journal/{year}-W{week}.txt"
@@ -64,4 +64,9 @@ def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     # Placeholder summary
     summary = f"Logged work entry on {now.date()}"
-    return {"log_key": log_key, "summary": summary}
+    return {
+        "status": "success",
+        "content": [
+            {"json": {"log_key": log_key, "summary": summary}}
+        ],
+    }

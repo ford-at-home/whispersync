@@ -7,7 +7,7 @@ for future analysis or enhancement.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Dict
 
 from strands import tool
 
@@ -24,27 +24,25 @@ logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
 
-@tool
-def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
+
+@tool(name="memory", description="Archive a memory transcript to S3")
+def handle(transcript: str, bucket: str) -> Dict[str, str]:
     """Archive a memory transcript to S3.
 
-    Parameters
-    ----------
-    payload : dict
-        Should contain ``transcript`` with the memory text and ``bucket``
-        specifying the S3 bucket name.
+    Args:
+        transcript: Memory text to store
+        bucket: Destination S3 bucket name
 
-    Returns
-    -------
-    dict
-        Mapping with the key ``memory_key`` pointing to the stored object
-        path.  When ``boto3`` is not available a dry-run value is returned.
+    Returns:
+        Mapping with the key ``memory_key`` pointing to the stored object.
+        When ``boto3`` is unavailable, the value is ``"dry-run"``.
     """
-    transcript = payload.get("transcript", "")
-    bucket = payload.get("bucket")
     if s3 is None:
         logger.warning("boto3 unavailable; returning dry-run response")
-        return {"memory_key": "dry-run"}
+        return {
+            "status": "success",
+            "content": [{"json": {"memory_key": "dry-run"}}],
+        }
     now = datetime.datetime.utcnow().isoformat()
     record = {
         "timestamp": now,
@@ -60,4 +58,7 @@ def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
         Body=(json.dumps(record) + "\n").encode("utf-8"),
         ContentType="application/json",
     )
-    return {"memory_key": key}
+    return {
+        "status": "success",
+        "content": [{"json": {"memory_key": key}}],
+    }

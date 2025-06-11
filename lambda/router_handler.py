@@ -52,7 +52,7 @@ def invoke_agent(agent_name: str, payload: dict) -> dict:
             logger.exception("Strands agent execution failed")
 
     if hasattr(module, "handle"):
-        return module.handle(payload)
+        return module.handle(**payload)
 
     raise AttributeError(f"Agent {agent_name} missing handle()")
 
