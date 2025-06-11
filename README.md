@@ -89,30 +89,17 @@ bedrock:InvokeModel
 secretsmanager:GetSecretValue (for GitHub token)
 
 2. Strands Agent Registration
-Register agents in Strands using your CLI or Python SDK:
+Define agents locally using the Strands SDK:
 
-python
-Copy
-Edit
-from strands_sdk import register_agent
+```python
+from strands import Agent, tool
 
-register_agent(
-    name="work_journal_agent",
-    description="Summarizes and logs weekly work activity.",
-    entrypoint="agents/work_journal.py"
-)
+@tool
+def work_journal_agent(transcript: str, bucket: str) -> dict:
+    ...
 
-register_agent(
-    name="memory_agent",
-    description="Cleans and archives personal memories.",
-    entrypoint="agents/memory_agent.py"
-)
-
-register_agent(
-    name="github_idea_agent",
-    description="Turns voice ideas into GitHub repos.",
-    entrypoint="agents/github_idea.py"
-)
+agent = Agent(tools=[work_journal_agent])
+```
 3. Store GitHub Token
 In AWS Secrets Manager:
 
@@ -126,7 +113,8 @@ python
 Copy
 Edit
 import boto3, os
-from strands_sdk import invoke_agent
+from strands import Agent
+from agents.work_journal_agent import handle as work_journal_agent
 
 s3 = boto3.client('s3')
 
@@ -138,16 +126,14 @@ def lambda_handler(event, context):
     obj = s3.get_object(Bucket=bucket, Key=key)
     transcript = obj['Body'].read().decode()
 
-    result = invoke_agent(
-        name=f"{agent_name}_agent",
-        input={"transcript": transcript, "s3_key": key}
-    )
+    agent = Agent(tools=[work_journal_agent])
+    result = agent(transcript)
     
     output_key = key.replace("transcripts", "outputs").replace(".txt", "_response.json")
     s3.put_object(
         Bucket=bucket,
         Key=output_key,
-        Body=result.encode("utf-8")
+        Body=str(result).encode("utf-8")
     )
 🧪 Test Locally
 Place transcript in test_data/transcripts/work/2025-06-09_1230.txt
@@ -186,7 +172,7 @@ Use Claude for suggestion chaining or emotional tone analysis
 Dependency	Version
 Python	3.11+
 boto3	latest
-strands_sdk	latest
+strands-agents	latest
 PyGithub	latest
 AWS Lambda runtime	python3.11
 
