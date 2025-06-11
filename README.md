@@ -199,6 +199,7 @@ s3://<YOUR_BUCKET>/{agent}/history.jsonl
 ---
 
 ## 🧠 Philosophy
+
 This system is not a productivity hack.
 
 It's a cognitive exoskeleton — built to support memory, reflection, and effortless ideation through natural speech and structured automation.
@@ -206,4 +207,5 @@ It's a cognitive exoskeleton — built to support memory, reflection, and effort
 ---
 
 ## 📫 Contact
+
 For help, ideas, or weird bugs, open an issue or whisper into the nearest tree.
