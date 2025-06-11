@@ -1,5 +1,6 @@
 aws-cdk-lib>=2.0.0
 constructs>=10.0.0
+strands-agents
+strands-agents-tools
 boto3
-strands_sdk
 PyGithub

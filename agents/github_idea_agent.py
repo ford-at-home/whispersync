@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from strands import tool
+
 import json
 import logging
 import os
@@ -40,6 +42,7 @@ def get_token() -> str:
     return response.get("SecretString", "")
 
 
+@tool
 def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Create a GitHub repository from a voice memo.
 

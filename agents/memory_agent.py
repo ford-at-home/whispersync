@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from strands import tool
+
 import json
 import logging
 import datetime
@@ -22,6 +24,7 @@ logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
 
+@tool
 def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Archive a memory transcript to S3.
 

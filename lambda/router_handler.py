@@ -1,7 +1,7 @@
 """AWS Lambda entry point for dispatching transcripts.
 
 The function triggered by S3 events loads the appropriate agent module
-and either invokes it locally or through the Strands SDK.  Results are
+and invokes it directly. Results are
 written back to S3 under the ``outputs/`` prefix.
 """
 import json
@@ -15,9 +15,9 @@ except Exception:  # pragma: no cover - optional for local testing
     boto3 = None
 
 try:
-    from strands_sdk import StrandsClient
+    from strands import Agent
 except Exception:  # pragma: no cover - library may not be installed
-    StrandsClient = None
+    Agent = None
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -41,22 +41,19 @@ def load_agent(agent_name: str):
 
 
 def invoke_agent(agent_name: str, payload: dict) -> dict:
-    """Invoke agent via Strands SDK if available, else call locally."""
-    if StrandsClient:
-        strands = StrandsClient(region=os.environ.get("STRANDS_REGION", "us-east-1"))
-        response = strands.invoke_agent(
-            agent_name=f"{agent_name}_agent",
-            input=payload,
-        )
-        try:
-            return json.loads(response)
-        except Exception:
-            return response
-
-    # Fallback: import the agent locally
+    """Invoke agent using the Strands SDK when available."""
     module = load_agent(agent_name)
+
+    if Agent and hasattr(module, "handle"):
+        strands_agent = Agent(tools=[module.handle])
+        try:
+            return strands_agent(payload.get("transcript", ""))
+        except Exception:
+            logger.exception("Strands agent execution failed")
+
     if hasattr(module, "handle"):
         return module.handle(payload)
+
     raise AttributeError(f"Agent {agent_name} missing handle()")
 
 
