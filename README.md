@@ -159,6 +159,86 @@ perl
 Copy
 Edit
 s3://<YOUR_BUCKET>/{agent}/history.jsonl
+
+## 🌀 Streaming Responses with Async Iterators
+
+The Strands Agents SDK supports asynchronous iterators for real‑time
+streaming. Use `stream_async()` on an agent to iterate over events as
+they are produced. This is ideal for async frameworks like FastAPI.
+
+```python
+import asyncio
+from strands import Agent
+from strands_tools import calculator
+
+agent = Agent(tools=[calculator], callback_handler=None)
+
+async def process_streaming_response():
+    async for event in agent.stream_async("Calculate 2+2"):
+        print(event)
+
+asyncio.run(process_streaming_response())
+```
+
+### Event Types
+
+The async iterator yields the same event payloads as callback handlers:
+
+- **Text Generation**: `data`, `complete`, `delta`
+- **Tool Events**: `current_tool_use` with `toolUseId`, `name`, and
+  accumulated `input`
+- **Lifecycle**: `init_event_loop`, `start_event_loop`, `start`, `message`,
+  raw `event`, `force_stop`, `force_stop_reason`
+- **Reasoning**: `reasoning`, `reasoningText`, `reasoning_signature`
+
+### FastAPI Example
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from strands import Agent
+from strands_tools import calculator, http_request
+
+app = FastAPI()
+
+class PromptRequest(BaseModel):
+    prompt: str
+
+@app.post("/stream")
+async def stream_response(request: PromptRequest):
+    async def generate():
+        agent = Agent(tools=[calculator, http_request], callback_handler=None)
+        try:
+            async for event in agent.stream_async(request.prompt):
+                if "data" in event:
+                    yield event["data"]
+        except Exception as e:
+            yield f"Error: {str(e)}"
+
+    return StreamingResponse(generate(), media_type="text/plain")
+```
+
+## 🛎️ Callback Handlers
+
+Callback handlers intercept events as they occur. Pass a function via the
+`callback_handler` parameter:
+
+```python
+from strands import Agent
+from strands_tools import calculator
+
+def custom_callback_handler(**kwargs):
+    if "data" in kwargs:
+        print(f"MODEL OUTPUT: {kwargs['data']}")
+
+agent = Agent(tools=[calculator], callback_handler=custom_callback_handler)
+agent("Calculate 2+2")
+```
+
+Handlers receive the same event types as async iterators. The default
+`PrintingCallbackHandler` prints text and tool usage. Specify `None` to
+disable output entirely.
 📅 Future Extensions
 Schedule weekly summary via EventBridge + Step Functions
 
