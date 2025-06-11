@@ -6,6 +6,8 @@ deploying any AWS resources.
 """
 from __future__ import annotations
 
+import argparse
+import asyncio
 import json
 import logging
 import sys
@@ -15,10 +17,29 @@ from importlib import import_module
 logging.basicConfig(level=logging.INFO)
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-invoke_agent = import_module("lambda.router_handler").invoke_agent
+router = import_module("lambda.router_handler")
+invoke_agent = router.invoke_agent
+stream_agent_async = router.stream_agent_async
 
 
-def main(path: str, bucket: str = "local-bucket") -> None:
+async def run_stream(
+    agent_name: str, payload: dict, use_callback: bool = False
+) -> None:
+    """Stream events from the agent asynchronously."""
+
+    def cb_handler(**kwargs):
+        if "data" in kwargs:
+            print(f"CALLBACK: {kwargs['data']}")
+
+    async for event in stream_agent_async(
+        agent_name,
+        payload,
+        cb_handler if use_callback else None,
+    ):
+        print(json.dumps(event))
+
+
+def main(path: str, bucket: str = "local-bucket", stream: bool = False, use_callback: bool = False) -> None:
     """Execute the selected agent with a local transcript file.
 
     Parameters
@@ -45,12 +66,19 @@ def main(path: str, bucket: str = "local-bucket") -> None:
         "source_s3_key": key,
     }
 
-    result = invoke_agent(agent_name, payload)
-    print(json.dumps(result, indent=2))
+    if stream:
+        asyncio.run(run_stream(agent_name, payload, use_callback))
+    else:
+        result = invoke_agent(agent_name, payload)
+        print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python local_test_runner.py <transcript_path>")
-        sys.exit(1)
-    main(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Run a local agent test")
+    parser.add_argument("path", help="Path to transcript text file")
+    parser.add_argument("--bucket", default="local-bucket", help="Mock bucket name")
+    parser.add_argument("--stream", action="store_true", help="Use async streaming")
+    parser.add_argument("--callback", action="store_true", help="Use demo callback handler")
+    args = parser.parse_args()
+
+    main(args.path, bucket=args.bucket, stream=args.stream, use_callback=args.callback)
