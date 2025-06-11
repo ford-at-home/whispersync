@@ -140,25 +140,24 @@ Place transcript in test_data/transcripts/work/2025-06-09_1230.txt
 
 Run:
 
-bash
-Copy
-Edit
+```bash
 python local_test_runner.py transcripts/work/2025-06-09_1230.txt
-This mimics the Lambda + S3 pipeline and prints the result.
+```
+Use `--stream` to stream events and `--callback` to enable the demo callback
+handler. This mimics the Lambda + S3 pipeline and prints the result.
 
 📓 Logs & Output
 Processed agent responses go to:
 
-bash
-Copy
-Edit
+```
 s3://<YOUR_BUCKET>/outputs/{agent}/{date}_response.json
+```
+
 Agent history (optional) written to:
 
-perl
-Copy
-Edit
+```
 s3://<YOUR_BUCKET>/{agent}/history.jsonl
+```
 
 ## 🌀 Streaming Responses with Async Iterators
 

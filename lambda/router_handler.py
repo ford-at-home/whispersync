@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from importlib import import_module
+from typing import AsyncIterator
 
 try:
     import boto3
@@ -55,6 +56,39 @@ def invoke_agent(agent_name: str, payload: dict) -> dict:
         return module.handle(payload)
 
     raise AttributeError(f"Agent {agent_name} missing handle()")
+
+
+async def stream_agent_async(
+    agent_name: str,
+    payload: dict,
+    callback_handler=None,
+) -> AsyncIterator[dict]:
+    """Stream agent events asynchronously using ``stream_async``.
+
+    Parameters
+    ----------
+    agent_name : str
+        Which registered agent to invoke.
+    payload : dict
+        Payload dictionary containing at minimum ``transcript``.
+    callback_handler : callable, optional
+        Callback handler function to forward events to.
+
+    Yields
+    ------
+    dict
+        Event dictionaries from ``stream_async``.
+    """
+    module = load_agent(agent_name)
+    if not (Agent and hasattr(module, "handle")):
+        # Fallback to normal invocation if Strands is unavailable
+        result = invoke_agent(agent_name, payload)
+        yield {"data": result, "complete": True}
+        return
+
+    strands_agent = Agent(tools=[module.handle], callback_handler=callback_handler)
+    async for event in strands_agent.stream_async(payload.get("transcript", "")):
+        yield event
 
 
 def lambda_handler(event, context):
