@@ -1,3 +1,5 @@
+"""AWS CDK stack for WhisperSync infrastructure."""
+
 from aws_cdk import (
     Stack,
     aws_s3 as s3,
@@ -10,7 +12,10 @@ from pathlib import Path
 
 
 class McpStack(Stack):
+    """CDK stack that provisions S3, Lambda, and permissions."""
+
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+        """Initialize the stack and set up resources."""
         super().__init__(scope, construct_id, **kwargs)
 
         bucket = s3.Bucket(self, "VoiceMcpBucket",

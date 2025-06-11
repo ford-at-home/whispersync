@@ -1,6 +1,8 @@
 """Work Journal Agent.
 
-Appends transcripts to a weekly work log stored in S3 and returns a summary.
+This agent appends a transcript to a week-based journal file stored in S3.
+The intent is to capture quick daily notes that can later be summarized.
+Only a short confirmation summary is generated here as a placeholder.
 """
 from __future__ import annotations
 
@@ -18,7 +20,20 @@ logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3") if boto3 else None
 def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Append transcript to weekly log and return a short summary."""
+    """Append transcript to weekly log and return a short summary.
+
+    Parameters
+    ----------
+    payload : dict
+        Contains ``transcript`` with the work note text and ``bucket`` for
+        the S3 location.
+
+    Returns
+    -------
+    dict
+        Path of the log file and a one-line summary string.  In dry-run
+        mode the log key is ``"dry-run"``.
+    """
     transcript = payload.get("transcript", "")
     bucket = payload.get("bucket")
     if s3 is None:

@@ -1,5 +1,11 @@
 # Lambda
 
-This folder contains the `router_handler.py` entry point used by AWS Lambda. The function listens for S3 `ObjectCreated` events on the `transcripts/` prefix and routes each transcript to the appropriate Strands agent. Results are written back to `outputs/` in the same bucket.
+This folder contains the ``router_handler.py`` entry point used by the
+deployed Lambda function.  Whenever a transcript text file is uploaded to
+S3 under the ``transcripts/`` prefix, the Lambda downloads that file,
+determines which agent should handle it and invokes the agent.  Responses
+are stored back in the ``outputs/`` prefix.
 
-Use the provided infrastructure stack to deploy this Lambda with the required permissions.
+The Lambda runs with permissions created by the infrastructure stack
+allowing it to read and write from S3, call models via Bedrock and fetch
+secrets for the GitHub agent.

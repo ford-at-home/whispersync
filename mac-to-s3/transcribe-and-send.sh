@@ -1,5 +1,9 @@
 #!/bin/bash
-
+#
+# Transcribe audio files using Whisper and upload the resulting text
+# to Amazon S3.  Designed to be triggered via an Automator workflow on
+# macOS.
+#
 # Ensure paths to ffmpeg, whisper, and aws CLI are available
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 

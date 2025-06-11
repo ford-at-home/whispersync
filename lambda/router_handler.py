@@ -1,4 +1,9 @@
-"""Lambda entry point to route transcripts to Strands agents."""
+"""AWS Lambda entry point for dispatching transcripts.
+
+The function triggered by S3 events loads the appropriate agent module
+and either invokes it locally or through the Strands SDK.  Results are
+written back to S3 under the ``outputs/`` prefix.
+"""
 import json
 import logging
 import os
