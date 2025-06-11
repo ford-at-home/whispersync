@@ -15,24 +15,21 @@ You record voice memos into folders like `work`, `memories`, or `github_ideas` o
 
 ### 📤 Input
 - Transcriptions are synced into:
-s3://<YOUR_BUCKET>/transcripts/{agent_name}/{timestamp}.txt
+  ```
+  s3://<YOUR_BUCKET>/transcripts/{agent_name}/{timestamp}.txt
+  ```
 
-makefile
-Copy
-Edit
-Example:
+**Example:**
+```
 s3://voice-mcp/transcripts/work/2025-06-09_1030.txt
-
-yaml
-Copy
-Edit
+```
 
 ### ⚙️ Trigger
 - S3 `ObjectCreated` event on prefix `transcripts/`
 - Triggers a Lambda that:
-1. Extracts the agent name from the key
-2. Fetches the transcript
-3. Passes content + context to a registered Strands agent
+  1. Extracts the agent name from the key
+  2. Fetches the transcript
+  3. Passes content + context to a registered Strands agent
 
 ---
 
@@ -51,9 +48,9 @@ Edit
 ### 3. `github_ideas` → 🐙 GitHub Agent
 - Creates new repos based on ideas
 - Uses Claude to generate:
-- Repo name
-- README
-- Initial issue list
+  - Repo name
+  - README
+  - Initial issue list
 - Calls GitHub API (via `PyGithub`)
 - Stores metadata in `s3://voice-mcp/github/history.jsonl`
 
@@ -72,28 +69,25 @@ A3 -->|S3 Event| B1[Lambda: router_handler.py]
 B1 -->|agent_name| B2[Strands Agent Router]
 B2 -->|Claude / GitHub / Memory| C[Agent Action Result]
 C --> D1[S3: /outputs/...]
-🛠️ Setup
-1. Deploy Infrastructure (CDK or Terraform)
-Create an S3 bucket: voice-mcp
+```
 
-Enable ObjectCreated:* events on prefix transcripts/
+---
 
-Create a Lambda: mcpAgentRouterLambda
+## 🛠️ Setup
 
-Grant Lambda permissions:
+### 1. Deploy Infrastructure (CDK or Terraform)
+- Create an S3 bucket: `voice-mcp`
+- Enable `ObjectCreated:*` events on prefix `transcripts/`
+- Create a Lambda: `mcpAgentRouterLambda`
+- Grant Lambda permissions:
+  - `s3:GetObject`
+  - `bedrock:InvokeModel`
+  - `secretsmanager:GetSecretValue` (for GitHub token)
 
-s3:GetObject
-
-bedrock:InvokeModel
-
-secretsmanager:GetSecretValue (for GitHub token)
-
-2. Strands Agent Registration
+### 2. Strands Agent Registration
 Register agents in Strands using your CLI or Python SDK:
 
-python
-Copy
-Edit
+```python
 from strands_sdk import register_agent
 
 register_agent(
@@ -113,18 +107,21 @@ register_agent(
     description="Turns voice ideas into GitHub repos.",
     entrypoint="agents/github_idea.py"
 )
-3. Store GitHub Token
+```
+
+### 3. Store GitHub Token
 In AWS Secrets Manager:
 
-makefile
-Copy
-Edit
+```
 Name: github/personal_token
 Value: <YOUR_TOKEN>
-🐍 Lambda Logic (router_handler.py)
-python
-Copy
-Edit
+```
+
+---
+
+## 🐍 Lambda Logic (router_handler.py)
+
+```python
 import boto3, os
 from strands_sdk import invoke_agent
 
@@ -149,50 +146,64 @@ def lambda_handler(event, context):
         Key=output_key,
         Body=result.encode("utf-8")
     )
-🧪 Test Locally
-Place transcript in test_data/transcripts/work/2025-06-09_1230.txt
+```
+
+---
+
+## 🧪 Test Locally
+Place transcript in `test_data/transcripts/work/2025-06-09_1230.txt`
 
 Run:
 
-bash
-Copy
-Edit
+```bash
 python local_test_runner.py transcripts/work/2025-06-09_1230.txt
+```
+
 This mimics the Lambda + S3 pipeline and prints the result.
 
-📓 Logs & Output
+---
+
+## 📓 Logs & Output
 Processed agent responses go to:
 
-bash
-Copy
-Edit
+```bash
 s3://<YOUR_BUCKET>/outputs/{agent}/{date}_response.json
+```
+
 Agent history (optional) written to:
 
-perl
-Copy
-Edit
+```bash
 s3://<YOUR_BUCKET>/{agent}/history.jsonl
-📅 Future Extensions
-Schedule weekly summary via EventBridge + Step Functions
+```
 
-Store vector embeddings in Pinecone or OpenSearch for memories
+---
 
-Add family, dreams, or spiritual agents
+## 📅 Future Extensions
+- Schedule weekly summary via EventBridge + Step Functions
+- Store vector embeddings in Pinecone or OpenSearch for memories
+- Add family, dreams, or spiritual agents
+- Use Claude for suggestion chaining or emotional tone analysis
 
-Use Claude for suggestion chaining or emotional tone analysis
+---
 
-🧼 Requirements
-Dependency	Version
-Python	3.11+
-boto3	latest
-strands_sdk	latest
-PyGithub	latest
-AWS Lambda runtime	python3.11
+## 🧼 Requirements
 
-🧠 Philosophy
+| Dependency | Version |
+|------------|---------|
+| Python | 3.11+ |
+| boto3 | latest |
+| strands_sdk | latest |
+| PyGithub | latest |
+| AWS Lambda runtime | python3.11 |
+
+---
+
+## 🧠 Philosophy
 This system is not a productivity hack.
-It’s a cognitive exoskeleton — built to support memory, reflection, and effortless ideation through natural speech and structured automation.
 
-📫 Contact
+It's a cognitive exoskeleton — built to support memory, reflection, and effortless ideation through natural speech and structured automation.
+
+---
+
+## 📫 Contact
 For help, ideas, or weird bugs, open an issue or whisper into the nearest tree.
