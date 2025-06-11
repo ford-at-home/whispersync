@@ -7,7 +7,7 @@ metadata about the action back to S3.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Dict
 
 from strands import tool
 
@@ -42,34 +42,37 @@ def get_token() -> str:
     return response.get("SecretString", "")
 
 
-@tool
-def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
+@tool(
+    name="github_idea",
+    description="Create a GitHub repository from a voice memo"
+)
+def handle(transcript: str, bucket: str, source_s3_key: str) -> Dict[str, str]:
     """Create a GitHub repository from a voice memo.
 
-    Parameters
-    ----------
-    payload : dict
-        Expect keys ``transcript`` with the spoken idea text,
-        ``bucket`` for the destination S3 bucket and ``source_s3_key`` for
-        logging purposes.
+    Args:
+        transcript: The spoken idea text
+        bucket: Destination S3 bucket for logs
+        source_s3_key: S3 key of the original transcript
 
-    Returns
-    -------
-    dict
-        Metadata about the created repository including the full repo
-        name and the source transcript key.  A dry-run dictionary is
-        returned when required dependencies are not available.
+    Returns:
+        Metadata about the created repository. In dry-run mode only the
+        ``repo`` key is returned.
     """
-    transcript = payload.get("transcript", "")
-    bucket = payload.get("bucket")
-    s3_key = payload.get("source_s3_key")
+    s3_key = source_s3_key
+
     if s3 is None or sm is None:
         logger.warning("boto3 unavailable; returning dry-run response")
-        return {"repo": "dry-run"}
+        return {
+            "status": "success",
+            "content": [{"json": {"repo": "dry-run"}}],
+        }
 
     if Github is None:
         logger.warning("PyGithub unavailable; returning dry-run response")
-        return {"repo": "dry-run"}
+        return {
+            "status": "success",
+            "content": [{"json": {"repo": "dry-run"}}],
+        }
     token = get_token()
     gh = Github(token)
     user = gh.get_user()
@@ -91,4 +94,7 @@ def handle(payload: Dict[str, Any]) -> Dict[str, Any]:
     s3.put_object(Bucket=bucket, Key=history_key, Body=(json.dumps(metadata) + "\n").encode("utf-8"),
                   ContentType="application/json")
 
-    return metadata
+    return {
+        "status": "success",
+        "content": [{"json": metadata}],
+    }

@@ -12,6 +12,8 @@ transcribed text of a voice memo and performs a specialized action.
   described in the transcript.  Metadata about the repo is also logged to
   S3.
 
-Every module exposes a ``handle(payload: dict)`` function which the Lambda
-router or Strands platform can call.  The payload always includes the
-transcript text, the target S3 bucket and the source object key.
+Each module exposes a ``handle`` function decorated with ``@tool``. The
+function parameters are individually typed (e.g. ``transcript: str`` and
+``bucket: str``) so the Strands framework can derive a tool specification
+automatically. These functions can be invoked directly with keyword
+arguments or via the ``Agent`` class.
