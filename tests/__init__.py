@@ -1,1 +1,1 @@
-# Tests package for Whispersync 
+# Tests package for Whispersync

@@ -1,19 +1,79 @@
+# WhisperSync Dependencies
+# Voice Memo MCP Agent System
+#
+# WHY THIS FILE EXISTS:
+# - Pins exact dependency versions for reproducible builds
+# - Separates production vs development dependencies
+# - Enables automated dependency management and security scanning
+# - Supports both local development and AWS Lambda deployment
+
 # AWS CDK dependencies
+# WHY aws-cdk-lib>=2.0.0: Required for AWS infrastructure-as-code
+# Uses CDK v2 for improved TypeScript/Python compatibility and unified API
 aws-cdk-lib>=2.0.0
+# WHY constructs>=10.0.0: Core building blocks for CDK components
+# Version 10+ provides better type safety and error messages
 constructs>=10.0.0
 
 # AWS and GitHub dependencies
+# WHY boto3>=1.26.0: AWS SDK for Python, required for Lambda and S3 operations
+# Version 1.26+ includes improved error handling and S3 multipart upload fixes
 boto3>=1.26.0
+# WHY botocore>=1.29.0: Low-level AWS client library (boto3 dependency)
+# Explicit pin prevents version conflicts with boto3
 botocore>=1.29.0
+# WHY PyGithub>=2.0.0: GitHub API integration for repository creation
+# Version 2.0+ supports GitHub Apps authentication and improved rate limiting
 PyGithub>=2.0.0
 
-# Strands Agents SDK
+# Strands SDK
+# WHY strands>=0.1.0: Core Strands platform integration
+# Provides Agent base class and tool decorators
+strands>=0.1.0
+# WHY strands-agents>=0.1.0: Agent-specific functionality
+# Contains invoke_agent and register_agent functions
 strands-agents>=0.1.0
+# WHY strands-tools>=0.1.0: Pre-built tools for common operations
+# Includes bedrock_knowledge_base_retrieve for AI integrations
+strands-tools>=0.1.0
+
+# Observability
+# WHY opentelemetry-api>=1.20.0: Vendor-neutral observability API
+# Enables distributed tracing across Lambda, S3, and external services
+opentelemetry-api>=1.20.0
+# WHY opentelemetry-sdk>=1.20.0: Reference implementation of OTel API
+# Provides exporters and processing pipeline for telemetry data
+opentelemetry-sdk>=1.20.0
+# WHY opentelemetry-exporter-otlp>=1.20.0: OTLP protocol exporter
+# Sends telemetry to observability platforms (Jaeger, Grafana, etc.)
+opentelemetry-exporter-otlp>=1.20.0
+# WHY opentelemetry-instrumentation-botocore>=0.41b0: Auto-instruments AWS calls
+# Traces S3 uploads, Lambda invocations, and Secrets Manager access
+opentelemetry-instrumentation-botocore>=0.41b0
+# WHY opentelemetry-instrumentation-logging>=0.41b0: Correlates logs with traces
+# Links log messages to distributed trace spans for better debugging
+opentelemetry-instrumentation-logging>=0.41b0
+
+# Demo UI (optional)
+# WHY streamlit>=1.28.0: Rapid prototyping web UI for testing pipeline
+# Version 1.28+ includes improved file upload widgets and error handling
+# Optional because production deployment doesn't need UI components
+streamlit>=1.28.0
 
 # Testing dependencies
+# WHY pytest>=7.0.0: Modern Python testing framework
+# Version 7+ provides better fixture management and async test support
 pytest>=7.0.0
+# WHY pytest-cov>=4.0.0: Code coverage reporting for pytest
+# Identifies untested code paths in agent logic and Lambda handlers
 pytest-cov>=4.0.0
 
 # Code quality
+# WHY black>=23.0.0: Opinionated Python code formatter
+# Version 23+ includes improved string formatting and preview features
+# Eliminates style debates and ensures consistent formatting
 black>=23.0.0
+# WHY flake8>=6.0.0: Python linter for style and potential bugs
+# Version 6+ includes better error messages and performance improvements
+# Catches common issues like unused imports and undefined variables
 flake8>=6.0.0

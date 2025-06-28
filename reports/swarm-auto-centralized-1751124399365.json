@@ -1,0 +1,13 @@
+{
+  "objective": "swarm as many documents are you can with as many parallel processes as you can to add inline comments, file-level comments, and inline comments. Make these comments emphasize the why",
+  "strategy": "auto",
+  "mode": "centralized",
+  "maxAgents": 5,
+  "timeout": 60,
+  "parallel": false,
+  "monitor": false,
+  "output": "json",
+  "outputDir": "./reports",
+  "timestamp": "2025-06-28T15:26:39.365Z",
+  "id": "swarm-auto-centralized-1751124399365"
+}
