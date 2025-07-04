@@ -11,20 +11,18 @@ import json
 import logging
 from dataclasses import dataclass
 
-try:
-    import boto3
-    import botocore
-    from strands import Agent, tool
-    from strands_tools import bedrock_knowledge_base_retrieve
-except ImportError:  # pragma: no cover - optional for local testing
-    boto3 = None
-    botocore = None
-    Agent = None
-    bedrock_knowledge_base_retrieve = None
-
-    # Mock decorator for testing without strands
-    def tool(func):
-        return func
+# Import base functionality with configuration
+from .base import (
+    BaseAgent, 
+    Agent, 
+    tool,
+    requires_aws,
+    validate_transcript,
+    generate_output_key,
+    ProcessingError,
+    bedrock_knowledge_base_retrieve
+)
+from .config import get_config
 
 
 logger = logging.getLogger(__name__)
@@ -42,21 +40,26 @@ class WorkEntry:
     sentiment: str
 
 
-class WorkJournalAgent:
-    """Agent specialized in work journal management and analysis."""
+class WorkJournalAgent(BaseAgent):
+    """Agent specialized in work journal management and analysis.
+    
+    WHY WORK JOURNAL AGENT:
+    - Captures professional activities and accomplishments automatically
+    - Provides structured logging for reflection and review cycles
+    - Enables productivity pattern analysis and insights
+    - Supports weekly summaries and goal tracking
+    - Maintains professional development history
+    """
 
-    def __init__(self, bucket: str = None, bedrock_client=None):
+    def __init__(self, bucket: str = None, correlation_id: str = None):
         """Initialize the work journal agent.
 
         Args:
             bucket: S3 bucket name for storage
-            bedrock_client: Optional Bedrock client for testing
+            correlation_id: Request correlation ID for tracing
         """
-        self.bucket = bucket or "voice-mcp"
-        self.s3 = boto3.client("s3") if boto3 else None
-        self.bedrock = bedrock_client or (
-            boto3.client("bedrock-runtime") if boto3 else None
-        )
+        super().__init__(bucket=bucket, correlation_id=correlation_id)
+        self.config = get_config()
 
         # Create agent with specialized tools
         if Agent:
@@ -81,12 +84,13 @@ class WorkJournalAgent:
                     self.analyze_productivity_patterns,
                     self.search_past_entries,
                 ],
-                model="anthropic.claude-3-5-sonnet-20241022-v2:0",
+                model=self.config.aws.bedrock_model,
             )
         else:
             self.agent = None
 
     @tool
+    @requires_aws
     def append_work_log(self, transcript: str) -> Dict[str, Any]:
         """Process and append a work transcript to the weekly log.
 
@@ -95,38 +99,45 @@ class WorkJournalAgent:
 
         Returns:
             Dictionary containing log_key, summary, and extracted metadata
+            
+        WHY WEEKLY LOGS:
+        - Balances detail retention with manageable file sizes
+        - Aligns with natural work reflection cycles
+        - Enables weekly summary generation and review
+        - Provides logical partitioning for search and analysis
         """
-        if not self.s3:
-            logger.warning("S3 unavailable; returning dry-run response")
-            return {
-                "log_key": "dry-run",
-                "summary": transcript[:50],
-                "categories": ["unknown"],
-                "key_points": ["dry-run mode"],
-            }
-
-        # Analyze transcript with Claude
-        analysis = self._analyze_transcript(transcript)
-
-        now = datetime.datetime.utcnow()
-        year, week, _ = now.isocalendar()
-        log_key = f"work_journal/{year}-W{week}.md"
-
-        # Get existing content
+        # Validate input
+        if not validate_transcript(transcript):
+            return self.handle_error(
+                ProcessingError("Invalid transcript content"),
+                "transcript_validation",
+                retryable=False
+            )
+        
         try:
-            existing = self.s3.get_object(Bucket=self.bucket, Key=log_key)
-            content = existing["Body"].read().decode()
-        except Exception as e:
-            if botocore and isinstance(e, botocore.exceptions.ClientError):
-                if e.response["Error"]["Code"] == "NoSuchKey":
-                    content = f"# Work Journal - {year} Week {week}\n\n"
-                else:
-                    raise
-            else:
-                content = f"# Work Journal - {year} Week {week}\n\n"
+            # Track processing time
+            self.emit_metric("WorkLogProcessingStarted", 1.0)
 
-        # Format entry with analysis
-        entry = f"""
+            # Analyze transcript with Claude
+            analysis = self._analyze_transcript(transcript)
+
+            now = datetime.datetime.utcnow()
+            year, week, _ = now.isocalendar()
+            log_key = f"work/{weekly_logs}/{year}-W{week}.md"
+
+            # Get existing content with proper error handling
+            try:
+                existing = self.s3.get_object(Bucket=self.bucket, Key=log_key)
+                content = existing["Body"].read().decode()
+                logger.info(f"Retrieved existing log: {log_key}")
+            except self.s3.exceptions.NoSuchKey:
+                content = f"# Work Journal - {year} Week {week}\n\n"
+                logger.info(f"Created new log: {log_key}")
+            except Exception as e:
+                return self.handle_error(e, "s3_read_existing_log")
+
+            # Format entry with analysis
+            entry = f"""
 ## {now.strftime('%Y-%m-%d %H:%M')} UTC
 
 **Categories:** {', '.join(analysis['categories'])}  
@@ -144,30 +155,50 @@ class WorkJournalAgent:
 ---
 """
 
-        content += entry
+            content += entry
 
-        # Save updated log
-        self.s3.put_object(
-            Bucket=self.bucket,
-            Key=log_key,
-            Body=content.encode("utf-8"),
-            ContentType="text/markdown",
-            Metadata={
-                "week": str(week),
-                "year": str(year),
-                "entry_count": str(content.count("## 20")),
-            },
-        )
+            # Save updated log with proper error handling
+            try:
+                self.s3.put_object(
+                    Bucket=self.bucket,
+                    Key=log_key,
+                    Body=content.encode("utf-8"),
+                    ContentType="text/markdown",
+                    Metadata={
+                        "week": str(week),
+                        "year": str(year),
+                        "entry_count": str(content.count("## 20")),
+                        "correlation_id": self.correlation_id or "unknown",
+                    },
+                )
+                logger.info(f"Appended work entry to {log_key}")
+            except Exception as e:
+                return self.handle_error(e, "s3_save_work_log")
 
-        logger.info(f"Appended work entry to {log_key}")
+            # Prepare result with metadata
+            result = {
+                "status": "success",
+                "log_key": log_key,
+                "summary": analysis["summary"],
+                "categories": analysis["categories"],
+                "key_points": analysis["key_points"],
+                "sentiment": analysis["sentiment"],
+                "processing_time": self.get_processing_time(),
+                "week": f"{year}-W{week}"
+            }
 
-        return {
-            "log_key": log_key,
-            "summary": analysis["summary"],
-            "categories": analysis["categories"],
-            "key_points": analysis["key_points"],
-            "sentiment": analysis["sentiment"],
-        }
+            # Store detailed result for tracking
+            output_key = generate_output_key("work", f"work_journal/{year}-W{week}.txt")
+            self.store_result(result, output_key)
+
+            # Emit success metrics
+            self.emit_metric("WorkLogProcessingCompleted", 1.0)
+            self.emit_metric("WorkLogProcessingTime", self.get_processing_time(), "Seconds")
+
+            return result
+            
+        except Exception as e:
+            return self.handle_error(e, "work_log_processing")
 
     @tool
     def generate_weekly_summary(

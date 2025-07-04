@@ -24,9 +24,12 @@
 import json
 import logging
 import os
+import datetime
+import time
 from typing import Any, Dict
 
 import boto3
+from botocore.exceptions import ClientError
 
 # Import the orchestrator agent for intelligent routing
 # WHY TRY/EXCEPT: Lambda layers may place Python packages in /opt/python,
@@ -224,6 +227,147 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return {
             "statusCode": 500,
             "body": json.dumps({"error": "Unexpected error", "details": str(e)}),
+        }
+
+
+def health_check_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """Health check endpoint for monitoring and load balancer probes.
+    
+    This handler performs comprehensive system health checks including:
+    - S3 connectivity and bucket access
+    - Agent initialization status
+    - External service availability
+    - System resource utilization
+    
+    Returns:
+        HTTP response with health status and detailed service information
+        
+    WHY HEALTH CHECKS:
+    - Enable load balancer health probes for high availability
+    - Provide operational visibility into system components
+    - Support automated alerting and recovery procedures
+    - Validate infrastructure changes before production traffic
+    """
+    start_time = time.time()
+    
+    try:
+        logger.info("Performing health check")
+        
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "request_id": context.request_id,
+            "services": {},
+            "metrics": {}
+        }
+        
+        # Test S3 connectivity
+        try:
+            bucket_name = os.environ.get('BUCKET_NAME', 'voice-mcp')
+            s3.head_bucket(Bucket=bucket_name)
+            health_status["services"]["s3"] = {
+                "status": "available",
+                "bucket": bucket_name
+            }
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            health_status["services"]["s3"] = {
+                "status": "error",
+                "error": error_code
+            }
+            if error_code in ['403', 'NoSuchBucket']:
+                health_status["status"] = "degraded"
+            else:
+                health_status["status"] = "unhealthy"
+        except Exception as e:
+            health_status["services"]["s3"] = {
+                "status": "error", 
+                "error": str(e)
+            }
+            health_status["status"] = "unhealthy"
+        
+        # Test agent initialization
+        try:
+            orchestrator = get_orchestrator_agent()
+            agent_status = {
+                "orchestrator": orchestrator is not None,
+                "work_agent": orchestrator.work_agent is not None if orchestrator else False,
+                "memory_agent": orchestrator.memory_agent is not None if orchestrator else False,
+                "github_agent": orchestrator.github_agent is not None if orchestrator else False
+            }
+            
+            health_status["services"]["agents"] = {
+                "status": "initialized" if all(agent_status.values()) else "partial",
+                "details": agent_status
+            }
+            
+            if not orchestrator:
+                health_status["status"] = "degraded"
+                
+        except Exception as e:
+            health_status["services"]["agents"] = {
+                "status": "error",
+                "error": str(e)
+            }
+            health_status["status"] = "degraded"
+        
+        # Test Bedrock availability (optional)
+        try:
+            bedrock = boto3.client('bedrock-runtime')
+            # Simple model list call to test connectivity
+            bedrock.list_foundation_models()
+            health_status["services"]["bedrock"] = {"status": "available"}
+        except Exception as e:
+            health_status["services"]["bedrock"] = {
+                "status": "error",
+                "error": str(e)
+            }
+            # Bedrock unavailable is degraded, not unhealthy
+            if health_status["status"] == "healthy":
+                health_status["status"] = "degraded"
+        
+        # Performance metrics
+        health_check_time = time.time() - start_time
+        health_status["metrics"] = {
+            "health_check_duration_ms": round(health_check_time * 1000, 2),
+            "memory_usage_mb": context.memory_limit_in_mb,
+            "remaining_time_ms": context.get_remaining_time_in_millis()
+        }
+        
+        # Determine HTTP status code based on health
+        if health_status["status"] == "healthy":
+            status_code = 200
+        elif health_status["status"] == "degraded":
+            status_code = 200  # Still healthy enough to serve traffic
+        else:
+            status_code = 503  # Service unavailable
+        
+        logger.info(f"Health check completed: {health_status['status']} in {health_check_time:.2f}s")
+        
+        return {
+            "statusCode": status_code,
+            "body": json.dumps(health_status, indent=2),
+            "headers": {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        
+        return {
+            "statusCode": 503,
+            "body": json.dumps({
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "request_id": getattr(context, 'request_id', 'unknown')
+            }, indent=2),
+            "headers": {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache"
+            }
         }
 
 

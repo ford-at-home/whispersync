@@ -43,10 +43,16 @@ COST OPTIMIZATION:
 
 from aws_cdk import (
     Stack,
+    CfnOutput,
     aws_s3 as s3,
     aws_lambda as _lambda,
     aws_s3_notifications as s3n,
     aws_iam as iam,
+    aws_cloudwatch as cloudwatch,
+    aws_cloudwatch_actions as cloudwatch_actions,
+    aws_sns as sns,
+    aws_kms as kms,
+    aws_ec2 as ec2,
     Duration,  # For timeout configuration
     RemovalPolicy,  # For lifecycle management
 )
@@ -55,104 +61,192 @@ from pathlib import Path
 
 
 class McpStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, environment: str = "development", **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        
+        self.environment = environment
+        self.is_production = environment == "production"
 
+        # KMS Key for enhanced encryption (production only)
+        kms_key = None
+        if self.is_production:
+            kms_key = kms.Key(
+                self, "WhisperSyncKMSKey",
+                description="WhisperSync encryption key for sensitive voice data",
+                enable_key_rotation=True,
+                removal_policy=RemovalPolicy.RETAIN
+            )
+        
         # S3 Bucket for transcript storage and agent output
         # WHY S3: Durable storage for voice transcripts, cost-effective for infrequent access,
         # native event notifications, supports hierarchical organization via prefixes
+        bucket_name = f"voice-mcp-{environment}" if environment != "production" else "voice-mcp"
+        
         bucket = s3.Bucket(
             self, 
             "VoiceMcpBucket",
-            bucket_name="voice-mcp",  # Fixed name for predictable cross-service access
+            bucket_name=bucket_name,
             
-            # SECURITY: Server-side encryption enabled by default (AES-256)
-            # encryption=s3.BucketEncryption.S3_MANAGED,  # Default behavior
+            # ENHANCED SECURITY: KMS encryption for production, AES-256 for dev
+            encryption=(
+                s3.BucketEncryption.KMS if self.is_production 
+                else s3.BucketEncryption.S3_MANAGED
+            ),
+            encryption_key=kms_key if self.is_production else None,
             
             # LIFECYCLE: Auto-delete for development/testing environments
-            # WHY: Prevents accumulation of test data, reduces storage costs
-            # PRODUCTION: Should use lifecycle policies instead of auto-delete
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+            removal_policy=(
+                RemovalPolicy.RETAIN if self.is_production 
+                else RemovalPolicy.DESTROY
+            ),
+            auto_delete_objects=not self.is_production,
             
-            # VERSIONING: Disabled for cost optimization
-            # WHY: Voice transcripts are immutable once processed
-            versioned=False,
+            # VERSIONING: Enabled for production data protection
+            versioned=self.is_production,
             
             # PUBLIC ACCESS: Blocked by default (secure by default)
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            
+            # NOTIFICATION CONFIGURATION: Enable event notifications
+            event_bridge_enabled=True
+        )
+        
+        # Bucket policy for enhanced security
+        bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.DENY,
+                principals=[iam.AnyPrincipal()],
+                actions=["s3:*"],
+                resources=[
+                    bucket.bucket_arn,
+                    bucket.arn_for_objects("*")
+                ],
+                conditions={
+                    "Bool": {"aws:SecureTransport": "false"}
+                }
+            )
         )
 
+        # SNS Topic for alerts and notifications
+        alert_topic = sns.Topic(
+            self, "WhisperSyncAlerts",
+            topic_name=f"whispersync-alerts-{environment}",
+            display_name="WhisperSync System Alerts"
+        )
+        
         # Lambda Function for agent routing and execution
-        # WHY Lambda: Serverless execution model matches sporadic voice memo pattern,
-        # automatic scaling, pay-per-execution, managed runtime updates
         lambda_fn = _lambda.Function(
             self,
             "McpAgentRouterLambda",
-            function_name="mcpAgentRouterLambda",  # Fixed name for monitoring/logging
+            function_name=f"mcpAgentRouterLambda-{environment}",
             
             # RUNTIME: Python 3.11 for latest features and performance
-            # WHY: Strands SDK compatibility, async/await support, type hints
             runtime=_lambda.Runtime.PYTHON_3_11,
             
             # HANDLER: Entry point in router_handler.py
             handler="router_handler.lambda_handler",
             
             # CODE: References lambda_fn directory relative to this file
-            # WHY: Keeps code separate from infrastructure, enables independent testing
             code=_lambda.Code.from_asset(
                 str(Path(__file__).resolve().parent.parent / "lambda_fn")
             ),
             
-            # TIMEOUT: Default 3 seconds may be too short for AI agent processing
-            # WHY: Strands agent execution can take 10-30 seconds for complex operations
-            timeout=Duration.minutes(5),  # Sufficient for most agent operations
+            # PERFORMANCE: Environment-specific configuration
+            timeout=Duration.minutes(5 if self.is_production else 3),
+            memory_size=512 if self.is_production else 256,
             
-            # MEMORY: 128MB default may be insufficient for AI processing
-            # WHY: Strands SDK, boto3, and AI model inference need adequate memory
-            memory_size=512,  # Balanced performance and cost
-            
-            # ENVIRONMENT: Runtime configuration
+            # ENVIRONMENT: Comprehensive runtime configuration
             environment={
-                "BUCKET_NAME": bucket.bucket_name,  # S3 bucket reference
-                # Future: Add STRANDS_API_ENDPOINT, OPENTELEMETRY_ENDPOINT
+                "BUCKET_NAME": bucket.bucket_name,
+                "WHISPERSYNC_ENV": environment,
+                "LOG_LEVEL": "WARNING" if self.is_production else "INFO",
+                "ENABLE_METRICS": "true",
+                "ENABLE_XRAY": "true" if self.is_production else "false",
+                "METRICS_NAMESPACE": "WhisperSync"
             },
             
-            # RESERVED CONCURRENCY: Not set (uses account default)
-            # WHY: Voice memos are sporadic, unlikely to hit concurrency limits
-            # FUTURE: Set to prevent runaway costs if needed
+            # MONITORING: X-Ray tracing for production
+            tracing=(
+                _lambda.Tracing.ACTIVE if self.is_production 
+                else _lambda.Tracing.DISABLED
+            ),
+            
+            # CONCURRENCY: Set reserved concurrency for production
+            reserved_concurrent_executions=(
+                10 if self.is_production else None
+            ),
+            
+            # SECURITY: Enhanced configuration
+            description=f"WhisperSync voice memo processing ({environment})",
+        )
+        
+        # Health Check Lambda Function
+        health_check_fn = _lambda.Function(
+            self,
+            "HealthCheckLambda",
+            function_name=f"whispersync-health-check-{environment}",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="router_handler.health_check_handler",
+            code=_lambda.Code.from_asset(
+                str(Path(__file__).resolve().parent.parent / "lambda_fn")
+            ),
+            timeout=Duration.seconds(30),
+            memory_size=128,
+            environment={
+                "BUCKET_NAME": bucket.bucket_name,
+                "WHISPERSYNC_ENV": environment
+            },
+            description=f"WhisperSync health check endpoint ({environment})"
         )
 
-        # IAM PERMISSIONS - Principle of Least Privilege
+        # IAM PERMISSIONS - Enhanced Security with Least Privilege
         
         # S3 Access: Read transcripts, write agent outputs
-        # WHY: Lambda needs to read incoming transcripts and store agent responses
         bucket.grant_read_write(lambda_fn)
+        bucket.grant_read(health_check_fn)  # Health check only needs read access
         
-        # Bedrock Access: AI model invocation for agent processing
-        # WHY: Strands agents use AWS Bedrock for LLM inference
-        # SECURITY: Wildcard resource acceptable as Bedrock controls access via IAM
-        lambda_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:InvokeModel",
-                    "bedrock:InvokeModelWithResponseStream"  # For streaming responses
-                ],
-                resources=["*"]  # Bedrock models are region-specific, * is appropriate
-            )
+        # Bedrock Access: Restricted to specific models and actions
+        bedrock_policy = iam.PolicyStatement(
+            effect=iam.Effect.ALLOW,
+            actions=[
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream",
+                "bedrock:ListFoundationModels"
+            ],
+            resources=[
+                f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+                f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.*"
+            ]
         )
+        lambda_fn.add_to_role_policy(bedrock_policy)
+        health_check_fn.add_to_role_policy(bedrock_policy)
         
-        # Secrets Manager Access: GitHub tokens and API keys
-        # WHY: Secure storage of sensitive credentials, automatic rotation capability
-        # SCOPE: Could be narrowed to specific secret ARNs in production
-        lambda_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["secretsmanager:GetSecretValue"],
-                resources=["*"]  # FUTURE: Restrict to specific secret ARNs
-            )
+        # Secrets Manager Access: Restricted to WhisperSync secrets
+        secrets_policy = iam.PolicyStatement(
+            effect=iam.Effect.ALLOW,
+            actions=["secretsmanager:GetSecretValue"],
+            resources=[
+                f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:github/personal_token*",
+                f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:whispersync/*"
+            ]
         )
+        lambda_fn.add_to_role_policy(secrets_policy)
+        
+        # CloudWatch Metrics: Custom metrics publishing
+        metrics_policy = iam.PolicyStatement(
+            effect=iam.Effect.ALLOW,
+            actions=[
+                "cloudwatch:PutMetricData"
+            ],
+            resources=["*"],
+            conditions={
+                "StringEquals": {
+                    "cloudwatch:namespace": "WhisperSync"
+                }
+            }
+        )
+        lambda_fn.add_to_role_policy(metrics_policy)
+        health_check_fn.add_to_role_policy(metrics_policy)
         
         # CloudWatch Logs: Automatic via Lambda service
         # WHY: Essential for debugging, monitoring, and alerting
@@ -161,38 +255,95 @@ class McpStack(Stack):
         # WHY: Useful for performance analysis and debugging complex agent workflows
         # tracing=_lambda.Tracing.ACTIVE,  # Uncomment to enable
 
-        # S3 EVENT NOTIFICATIONS - Event-Driven Processing
+        # MONITORING AND ALERTING
         
-        # Lambda Destination: Route S3 events to Lambda function
+        # CloudWatch Alarms for Lambda errors
+        error_alarm = cloudwatch.Alarm(
+            self, "LambdaErrorAlarm",
+            alarm_name=f"whispersync-lambda-errors-{environment}",
+            metric=lambda_fn.metric_errors(
+                period=Duration.minutes(5),
+                statistic="Sum"
+            ),
+            threshold=3,
+            evaluation_periods=2,
+            alarm_description="WhisperSync Lambda function error rate too high"
+        )
+        error_alarm.add_alarm_action(
+            cloudwatch_actions.SnsAction(alert_topic)
+        )
+        
+        # CloudWatch Alarm for Lambda duration
+        duration_alarm = cloudwatch.Alarm(
+            self, "LambdaDurationAlarm",
+            alarm_name=f"whispersync-lambda-duration-{environment}",
+            metric=lambda_fn.metric_duration(
+                period=Duration.minutes(5),
+                statistic="Average"
+            ),
+            threshold=240000,  # 4 minutes (close to 5-minute timeout)
+            evaluation_periods=2,
+            alarm_description="WhisperSync Lambda function duration too high"
+        )
+        duration_alarm.add_alarm_action(
+            cloudwatch_actions.SnsAction(alert_topic)
+        )
+        
+        # S3 EVENT NOTIFICATIONS - Event-Driven Processing
         notification = s3n.LambdaDestination(lambda_fn)
         
         # Event Filter: Only process transcript uploads
-        # WHY: Prevents unnecessary Lambda invocations from other S3 operations,
-        # reduces costs and improves performance
         bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,  # Trigger on new objects only
+            s3.EventType.OBJECT_CREATED,
             notification,
             s3.NotificationKeyFilter(
-                prefix="transcripts/"  # Only files in transcripts/ directory
-                # suffix=".txt"  # Could add file type filtering
+                prefix="transcripts/",
+                suffix=".txt"
             )
         )
         
-        # OUTPUTS: CDK stack outputs for reference by other stacks or services
-        # WHY: Enable cross-stack references and external service integration
+        # OUTPUTS: CDK stack outputs for external integration
         
-        # Output bucket name for external reference
-        # Used by: Local transcription uploader, monitoring systems
-        # CfnOutput(
-        #     self, "BucketName",
-        #     value=bucket.bucket_name,
-        #     description="S3 bucket for voice memo transcripts"
-        # )
+        CfnOutput(
+            self, "BucketName",
+            value=bucket.bucket_name,
+            description="S3 bucket for voice memo transcripts",
+            export_name=f"WhisperSync-BucketName-{environment}"
+        )
         
-        # Output Lambda function name for monitoring setup
-        # CfnOutput(
-        #     self, "LambdaFunctionName", 
-        #     value=lambda_fn.function_name,
-        #     description="Lambda function handling agent routing"
-        # )
+        CfnOutput(
+            self, "LambdaFunctionName", 
+            value=lambda_fn.function_name,
+            description="Lambda function handling agent routing",
+            export_name=f"WhisperSync-LambdaFunction-{environment}"
+        )
+        
+        CfnOutput(
+            self, "HealthCheckFunctionName",
+            value=health_check_fn.function_name,
+            description="Health check Lambda function",
+            export_name=f"WhisperSync-HealthCheck-{environment}"
+        )
+        
+        CfnOutput(
+            self, "AlertTopicArn",
+            value=alert_topic.topic_arn,
+            description="SNS topic for system alerts",
+            export_name=f"WhisperSync-AlertTopic-{environment}"
+        )
+        
+        if kms_key:
+            CfnOutput(
+                self, "KMSKeyId",
+                value=kms_key.key_id,
+                description="KMS key for encryption",
+                export_name=f"WhisperSync-KMSKey-{environment}"
+            )
+        
+        # Store references for other methods
+        self.bucket = bucket
+        self.lambda_fn = lambda_fn
+        self.health_check_fn = health_check_fn
+        self.alert_topic = alert_topic
+        self.kms_key = kms_key
 
