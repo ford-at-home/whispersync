@@ -179,7 +179,7 @@ def initialize_session_state():
     if "demo_mode" not in st.session_state:
         st.session_state.demo_mode = True
     if "s3_bucket" not in st.session_state:
-        st.session_state.s3_bucket = "voice-mcp-demo"
+        st.session_state.s3_bucket = os.environ.get("TRANSCRIPT_BUCKET_NAME", "macbook-transcriptions-demo")
 
 
 def display_agent_result(agent_name: str, result: Dict[str, Any]):

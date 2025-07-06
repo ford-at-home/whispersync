@@ -143,7 +143,10 @@ class OrchestratorAgent:
         WHY OPTIONAL PARAMETERS: Enables flexible testing while providing
         sensible defaults for production deployment.
         """
-        self.bucket = bucket or "voice-mcp"
+        # Use configuration for bucket name
+        from .config import get_config
+        config = get_config()
+        self.bucket = bucket or config.aws.bucket_name
         # WHY CONDITIONAL CLIENTS: Supports both production and testing environments
         self.s3 = boto3.client("s3") if boto3 else None
         self.bedrock = bedrock_client or (
@@ -494,6 +497,8 @@ class OrchestratorAgent:
         # WHY SOURCE KEY FIRST: Explicit user categorization (via folder structure)
         # is more reliable than content analysis when available.
         if source_key:
+            # Extract folder name from path like transcripts/work/2024/01/15/timestamp.txt
+            # or macbook-transcriptions/transcriptions/work/2024/01/15/timestamp.txt
             if "/work/" in source_key:
                 return RoutingDecision(
                     primary_agent=AgentType.WORK,

@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 def process_transcript_locally(
     transcript: str,
     source_key: Optional[str] = None,
-    mock_bucket: str = "voice-mcp-local",
+    mock_bucket: str = os.environ.get("TRANSCRIPT_BUCKET_NAME", "macbook-transcriptions-local"),
 ) -> Dict[str, Any]:
     # WHY mock_bucket: Simulates S3 bucket name for agent compatibility
     # WHY source_key Optional: Supports both explicit routing and auto-detection

@@ -1,0 +1,1 @@
+I'm thinking about building an IoT garden monitoring system with sensors for soil moisture, temperature, and light levels. It would send notifications to your phone and maybe even auto-water plants when needed.

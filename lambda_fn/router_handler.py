@@ -26,7 +26,8 @@ import logging
 import os
 import datetime
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
+from urllib.parse import unquote_plus
 
 import boto3
 from botocore.exceptions import ClientError
@@ -77,13 +78,149 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         logger.info(f"Received event: {json.dumps(event)}")
 
-        # Extract S3 information from event
-        # NOTE: We only process the first record. S3 typically sends one record per event,
-        # but the Records array structure allows for future batching if needed
-        record = event["Records"][0]
-        bucket = record["s3"]["bucket"]["name"]
-        key = record["s3"]["object"]["key"]  # Format: transcripts/{agent_type}/{timestamp}.txt
+        # Validate event structure
+        if not event or "Records" not in event:
+            logger.error("Invalid event: missing Records field")
+            return {
+                "statusCode": 400,
+                "body": json.dumps(
+                    {"error": "Invalid event format", "details": "Missing 'Records' field"}
+                ),
+            }
 
+        if not event["Records"]:
+            logger.warning("Empty Records array in S3 event")
+            return {
+                "statusCode": 200,
+                "body": json.dumps(
+                    {"message": "No records to process", "processed": 0}
+                ),
+            }
+
+        # Process all records in the event
+        # WHY MULTI-RECORD: While S3 typically sends one record per event,
+        # the Records array structure allows for batch processing.
+        # Processing all records ensures we don't miss any transcripts.
+        processed_count = 0
+        errors = []
+        results = []
+
+        for idx, record in enumerate(event["Records"]):
+            try:
+                # Validate record structure
+                if "s3" not in record:
+                    logger.error(f"Record {idx} missing 's3' field")
+                    errors.append({
+                        "record_index": idx,
+                        "error": "Missing 's3' field in record"
+                    })
+                    continue
+
+                if "bucket" not in record["s3"] or "object" not in record["s3"]:
+                    logger.error(f"Record {idx} missing bucket or object information")
+                    errors.append({
+                        "record_index": idx,
+                        "error": "Incomplete S3 information"
+                    })
+                    continue
+
+                # Extract S3 information
+                bucket = record["s3"]["bucket"]["name"]
+                key = record["s3"]["object"]["key"]
+                
+                # Handle URL-encoded keys
+                # WHY: S3 URL-encodes object keys in event notifications.
+                # Spaces become '+' or '%20', special chars are percent-encoded.
+                # We must decode to get the actual S3 object key.
+                key = unquote_plus(key)
+                
+                logger.info(f"Processing record {idx}: s3://{bucket}/{key}")
+
+                # Process individual transcript
+                result = process_single_transcript(bucket, key, context)
+                results.append(result)
+                
+                if result.get("statusCode") == 200:
+                    processed_count += 1
+                else:
+                    errors.append({
+                        "record_index": idx,
+                        "bucket": bucket,
+                        "key": key,
+                        "error": result.get("error", "Unknown error")
+                    })
+
+            except Exception as e:
+                logger.error(f"Failed to process record {idx}: {e}", exc_info=True)
+                errors.append({
+                    "record_index": idx,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                })
+
+        # Prepare final response
+        if processed_count == 0 and errors:
+            # All records failed
+            return {
+                "statusCode": 500,
+                "body": json.dumps({
+                    "error": "All records failed to process",
+                    "processed": processed_count,
+                    "total": len(event["Records"]),
+                    "errors": errors
+                }),
+            }
+        elif errors:
+            # Partial success
+            return {
+                "statusCode": 207,  # Multi-status
+                "body": json.dumps({
+                    "message": "Partial success",
+                    "processed": processed_count,
+                    "total": len(event["Records"]),
+                    "errors": errors,
+                    "results": results
+                }),
+            }
+        else:
+            # Complete success
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "message": "All transcripts processed successfully",
+                    "processed": processed_count,
+                    "total": len(event["Records"]),
+                    "results": results
+                }),
+            }
+
+    except Exception as e:
+        logger.error(f"Unexpected error in lambda_handler: {e}", exc_info=True)
+        return {
+            "statusCode": 500,
+            "body": json.dumps({
+                "error": "Unexpected error",
+                "details": str(e),
+                "error_type": type(e).__name__
+            }),
+        }
+
+
+def process_single_transcript(bucket: str, key: str, context: Any) -> Dict[str, Any]:
+    """Process a single transcript from S3.
+    
+    This function handles the core logic for downloading and processing
+    a single transcript file, delegating to the orchestrator for routing.
+    
+    Args:
+        bucket: S3 bucket name
+        key: S3 object key (already URL-decoded)
+        context: Lambda context for request tracking
+        
+    Returns:
+        Dictionary with processing results or error information
+    """
+    try:
         logger.info(f"Processing transcript from s3://{bucket}/{key}")
 
         # Download transcript from S3
@@ -94,14 +231,21 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             obj = s3.get_object(Bucket=bucket, Key=key)
             transcript = obj["Body"].read().decode("utf-8")
             logger.info(f"Downloaded transcript, {len(transcript)} characters")
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            logger.error(f"S3 error downloading transcript: {error_code}")
+            return {
+                "statusCode": 404 if error_code == 'NoSuchKey' else 500,
+                "error": "Failed to download transcript",
+                "details": str(e),
+                "error_code": error_code
+            }
         except Exception as e:
             logger.error(f"Failed to download transcript: {e}")
-            # Return early with specific S3 error - no point continuing without data
             return {
                 "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Failed to download transcript", "details": str(e)}
-                ),
+                "error": "Failed to download transcript",
+                "details": str(e)
             }
 
         # Route transcript through orchestrator
@@ -135,7 +279,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # - Monitoring: Track success rates and failure modes
             output_data = {
                 "source_key": key,
-                "processed_at": context.request_id,  # Use request_id as unique identifier
+                "processed_at": context.aws_request_id,  # Use request_id as unique identifier
                 "routing_decision": routing_decision,  # Which agent(s) were chosen and why
                 "agent_results": processing_results,   # Actual output from each agent
                 "success": all(  # Overall success only if ALL agents succeeded
@@ -163,7 +307,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 Metadata={
                     "source_transcript": key,
                     "primary_agent": routing_decision.get("primary_agent", "unknown"),
-                    "request_id": context.request_id,
+                    "request_id": context.aws_request_id,
                 },
             )
 
@@ -172,16 +316,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Return success response
             return {
                 "statusCode": 200,
-                "body": json.dumps(
-                    {
-                        "message": "Transcript processed successfully",
-                        "source_key": key,
-                        "output_key": output_key,
-                        "routing": routing_decision,
-                        "agents_used": list(processing_results.keys()),
-                        "success": output_data["success"],
-                    }
-                ),
+                "message": "Transcript processed successfully",
+                "source_key": key,
+                "output_key": output_key,
+                "routing": routing_decision,
+                "agents_used": list(processing_results.keys()),
+                "success": output_data["success"],
             }
 
         except Exception as e:
@@ -199,7 +339,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "source_key": key,
                 "error": str(e),
                 "error_type": type(e).__name__,
-                "request_id": context.request_id,
+                "request_id": context.aws_request_id,
             }
 
             try:
@@ -217,16 +357,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             return {
                 "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Processing failed", "details": str(e), "source_key": key}
-                ),
+                "error": "Processing failed",
+                "details": str(e),
+                "source_key": key
             }
 
     except Exception as e:
-        logger.error(f"Unexpected error: {e}", exc_info=True)
+        logger.error(f"Unexpected error in process_single_transcript: {e}", exc_info=True)
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": "Unexpected error", "details": str(e)}),
+            "error": "Unexpected error",
+            "details": str(e)
         }
 
 
@@ -256,14 +397,14 @@ def health_check_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         health_status = {
             "status": "healthy",
             "timestamp": datetime.datetime.utcnow().isoformat(),
-            "request_id": context.request_id,
+            "request_id": context.aws_request_id,
             "services": {},
             "metrics": {}
         }
         
         # Test S3 connectivity
         try:
-            bucket_name = os.environ.get('BUCKET_NAME', 'voice-mcp')
+            bucket_name = os.environ.get('TRANSCRIPT_BUCKET_NAME', 'macbook-transcriptions')
             s3.head_bucket(Bucket=bucket_name)
             health_status["services"]["s3"] = {
                 "status": "available",

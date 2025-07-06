@@ -43,7 +43,7 @@ class TestWhisperSyncConfig:
         
         assert config.environment == Environment.DEVELOPMENT
         assert config.aws.region == "us-east-1"
-        assert config.aws.bucket_name == "voice-mcp"
+        assert config.aws.bucket_name == "macbook-transcriptions"
         assert config.aws.bedrock_model == "anthropic.claude-3-5-sonnet-20241022-v2:0"
         assert config.strands.use_mocks is True
         assert config.security.require_tls is True
@@ -151,7 +151,7 @@ class TestAWSConfig:
         config = AWSConfig()
         
         assert config.region == "us-east-1"
-        assert config.bucket_name == "voice-mcp"
+        assert config.bucket_name == "macbook-transcriptions"
         assert config.lambda_timeout == 300
         assert config.lambda_memory == 512
         assert config.enable_xray is False

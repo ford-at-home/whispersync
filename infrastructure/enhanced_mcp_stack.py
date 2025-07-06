@@ -36,6 +36,7 @@ ARCHITECTURAL IMPROVEMENTS:
    - SQS Long Polling to reduce API calls
 """
 
+import os
 from aws_cdk import (
     Stack,
     CfnOutput,
@@ -167,9 +168,13 @@ class EnhancedMcpStack(Stack):
         """Create S3 buckets with lifecycle policies for cost optimization."""
         
         # Main bucket with intelligent tiering
+        bucket_name = os.environ.get('TRANSCRIPT_BUCKET_NAME', 'macbook-transcriptions')
+        if self.environment != "production":
+            bucket_name = f"{bucket_name}-{self.environment}"
+        
         self.main_bucket = s3.Bucket(
             self, "WhisperSyncMainBucket",
-            bucket_name=f"whispersync-{self.environment}-main",
+            bucket_name=bucket_name,
             encryption=s3.BucketEncryption.KMS,
             encryption_key=self.master_key,
             versioned=self.is_production,

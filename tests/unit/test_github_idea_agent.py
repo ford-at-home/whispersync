@@ -403,18 +403,18 @@ class TestGitHubIdeaAgent:
     def test_github_idea_agent_callable(self):
         """Test that GitHubIdeaAgent is callable.
         
-        WHY: Agents implement the Strands Agent interface.
+        WHY: Agents implement the callable interface.
         TESTS: Agent instance can be called like a function.
-        INTERFACE: Ensures compatibility with Strands SDK.
+        INTERFACE: Ensures compatibility with agent interface.
         """
         with patch("agents.github_idea_agent.boto3"):
-            with patch("agents.github_idea_agent.Agent") as mock_agent_class:
-                mock_agent_instance = Mock()
-                mock_agent_class.return_value = mock_agent_instance
+            agent = GitHubIdeaAgent()
+            
+            # Mock the create_repository_from_idea method
+            with patch.object(agent, 'create_repository_from_idea') as mock_create:
+                mock_create.return_value = {"status": "success", "repo": "test/repo"}
                 
-                agent = GitHubIdeaAgent()
-                agent.agent = mock_agent_instance
+                result = agent("Create a GitHub repository from this idea: Test prompt")
                 
-                result = agent("Test prompt")
-                
-                mock_agent_instance.assert_called_once_with("Test prompt")
+                mock_create.assert_called_once_with("Test prompt", is_private=False)
+                assert result["status"] == "success"

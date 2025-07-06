@@ -1,0 +1,8 @@
+# AWS CDK dependencies
+aws-cdk-lib>=2.0.0
+constructs>=10.0.0
+
+# AWS dependencies
+boto3>=1.26.0
+botocore>=1.29.0
+PyGithub>=2.0.0

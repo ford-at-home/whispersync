@@ -1,0 +1,1 @@
+Spent most of the day debugging a race condition in the payment processing service. Turns out it was related to database connection pooling. Fixed it by implementing proper connection lifecycle management. This should prevent the intermittent failures we've been seeing in production.

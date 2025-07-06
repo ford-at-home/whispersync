@@ -156,7 +156,7 @@ class TestWorkJournalAgent:
         """Test handle function with missing bucket.
         
         WHY: Payload might be incomplete in error scenarios.
-        TESTS: Uses default bucket 'voice-mcp' when not specified.
+        TESTS: Uses default bucket 'macbook-transcriptions' when not specified.
         FALLBACK: Should work with minimal configuration.
         """
         payload = {"transcript": "Test transcript"}
@@ -171,11 +171,11 @@ class TestWorkJournalAgent:
 
             result = handle(payload)
 
-            # Should use default bucket "voice-mcp"
+            # Should use default bucket "macbook-transcriptions"
             assert "log_key" in result
             mock_s3.put_object.assert_called_once()
             call_args = mock_s3.put_object.call_args
-            assert call_args[1]["Bucket"] == "voice-mcp"
+            assert call_args[1]["Bucket"] == "macbook-transcriptions"
 
     def test_work_journal_agent_initialization(self):
         """Test WorkJournalAgent initialization."""

@@ -68,9 +68,9 @@ stack = McpStack(app, "McpStack")
 # WHY: Enable cost tracking, compliance reporting, and resource management
 cdk.Tags.of(stack).add("Project", "WhisperSync")
 cdk.Tags.of(stack).add("Component", "VoiceMemoProcessing") 
-cdk.Tags.of(stack).add("Environment", "dev")  # TODO: Make environment-aware
-cdk.Tags.of(stack).add("Owner", "AI-Agents-Team")
-cdk.Tags.of(stack).add("CostCenter", "R&D")
+cdk.Tags.of(stack).add("Environment", "dev")
+cdk.Tags.of(stack).add("Owner", "AIAgentsTeam")
+cdk.Tags.of(stack).add("CostCenter", "RnD")
 
 # Synthesize CloudFormation templates
 # This generates the JSON/YAML that CloudFormation will deploy

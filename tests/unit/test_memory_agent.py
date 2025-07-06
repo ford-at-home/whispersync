@@ -180,7 +180,7 @@ class TestMemoryAgent:
         """Test handle function with missing bucket.
         
         WHY: Payload might be incomplete in error scenarios.
-        TESTS: Uses default bucket 'voice-mcp' when not specified.
+        TESTS: Uses default bucket 'macbook-transcriptions' when not specified.
         ROBUSTNESS: Should work with minimal input.
         """
         payload = {"transcript": "Test memory"}
@@ -207,7 +207,7 @@ class TestMemoryAgent:
 
                 result = handle(payload)
 
-                # Should use default bucket "voice-mcp"
+                # Should use default bucket "macbook-transcriptions"
                 assert "memory_key" in result
                 mock_s3.put_object.assert_called()
                 
@@ -220,7 +220,7 @@ class TestMemoryAgent:
                         break
                 
                 assert memory_call is not None
-                assert memory_call[1]["Bucket"] == "voice-mcp"
+                assert memory_call[1]["Bucket"] == "macbook-transcriptions"
 
     def test_handle_with_missing_transcript(self):
         """Test handle function with missing transcript.

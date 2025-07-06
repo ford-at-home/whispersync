@@ -23,13 +23,14 @@ LAMBDA-SPECIFIC CONCERNS:
 import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock
+from urllib.parse import quote_plus
 
 # Import the handler function
 import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from lambda_fn.router_handler import lambda_handler
+from lambda_fn.router_handler import lambda_handler, process_single_transcript
 
 # Reset orchestrator singleton before tests
 import agents.orchestrator_agent
@@ -107,10 +108,12 @@ class TestRouterHandler:
 
             assert result["statusCode"] == 200
             body = json.loads(result["body"])
-            assert body["message"] == "Transcript processed successfully"
-            assert "output_key" in body
-            assert body["output_key"] == "outputs/work/test_response.json"
-            assert body["success"] is True
+            assert body["message"] == "All transcripts processed successfully"
+            assert body["processed"] == 1
+            assert body["total"] == 1
+            assert "results" in body
+            assert len(body["results"]) == 1
+            assert body["results"][0]["success"] is True
 
             # Verify S3 operations
             mock_s3.get_object.assert_called_once_with(
@@ -177,9 +180,9 @@ class TestRouterHandler:
 
             assert result["statusCode"] == 200
             body = json.loads(result["body"])
-            assert body["message"] == "Transcript processed successfully"
-            assert "output_key" in body
-            assert body["success"] is True
+            assert body["message"] == "All transcripts processed successfully"
+            assert body["processed"] == 1
+            assert body["total"] == 1
             # Verify the results were stored
             mock_s3.put_object.assert_called_once()
             call_args = mock_s3.put_object.call_args
@@ -236,8 +239,9 @@ class TestRouterHandler:
 
             assert result["statusCode"] == 200
             body = json.loads(result["body"])
-            assert body["message"] == "Transcript processed successfully"
-            assert body["success"] is True
+            assert body["message"] == "All transcripts processed successfully"
+            assert body["processed"] == 1
+            assert body["total"] == 1
             # Verify results were stored correctly
             mock_s3.put_object.assert_called_once()
             call_args = mock_s3.put_object.call_args
@@ -282,7 +286,7 @@ class TestRouterHandler:
             assert result["statusCode"] == 500
             body = json.loads(result["body"])
             assert "error" in body
-            assert "Processing failed" in body["error"]
+            assert "All records failed to process" in body["error"]
 
     def test_lambda_handler_with_different_agent_types(self):
         """Test lambda_handler function with different agent types.
@@ -340,8 +344,9 @@ class TestRouterHandler:
 
                 assert result["statusCode"] == 200
                 body = json.loads(result["body"])
-                assert body["message"] == "Transcript processed successfully"
-                assert body["success"] is True
+                assert body["message"] == "All transcripts processed successfully"
+                assert body["processed"] == 1
+                assert body["total"] == 1
                 # Verify orchestrator was called with correct S3 key
                 mock_route.assert_called_once_with(
                     transcript="Test transcript", 
@@ -401,10 +406,9 @@ class TestRouterHandler:
 
             assert result["statusCode"] == 200
             body = json.loads(result["body"])
-            assert body["message"] == "Transcript processed successfully"
-            assert body["success"] is True
-            assert "work" in body["agents_used"]
-            assert "memory" in body["agents_used"]
+            assert body["message"] == "All transcripts processed successfully"
+            assert body["processed"] == 1
+            assert body["total"] == 1
             # Verify results contain both agents
             call_args = mock_s3.put_object.call_args
             body_content = call_args[1]["Body"].decode("utf-8")
@@ -426,9 +430,10 @@ class TestRouterHandler:
         # It will fail with missing Records key
         result = lambda_handler(event, None)
 
-        assert result["statusCode"] == 500
+        assert result["statusCode"] == 400  # Bad request for missing Records
         body = json.loads(result["body"])
         assert "error" in body
+        assert "Missing 'Records' field" in body["details"]
 
     def test_lambda_handler_with_missing_s3_key(self):
         """Test lambda_handler with missing S3 object key.
@@ -499,12 +504,287 @@ class TestRouterHandler:
 
             assert result["statusCode"] == 200
             body = json.loads(result["body"])
-            assert body["message"] == "Transcript processed successfully"
-            assert body["success"] is True  # all() returns True for empty sequences
-            assert body["agents_used"] == []  # No agents were used
+            assert body["message"] == "All transcripts processed successfully"
+            assert body["processed"] == 1
+            assert body["total"] == 1
             # Should still process even with empty transcript
             mock_route.assert_called_once_with(
                 transcript="",
                 source_key="transcripts/work/empty.txt",
                 bucket="test-bucket"
+            )
+
+    def test_lambda_handler_with_url_encoded_keys(self):
+        """Test lambda_handler with URL-encoded S3 keys.
+        
+        WHY: S3 event notifications URL-encode object keys.
+        TESTS: Proper decoding of spaces and special characters.
+        EXAMPLES: 
+        - Spaces can be encoded as '+' or '%20'
+        - Special chars like '&' become '%26'
+        """
+        event = {
+            "Records": [
+                {
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "transcripts/work/my+voice+memo+2024-01-01.txt"},
+                    }
+                }
+            ]
+        }
+
+        # Mock S3 operations
+        mock_s3 = Mock()
+        lambda_fn.router_handler.s3 = mock_s3
+        mock_s3.get_object.return_value = {
+            "Body": Mock(read=lambda: b"Test transcript with spaces")
+        }
+
+        with patch("lambda_fn.router_handler.route_to_agent") as mock_route:
+            mock_route.return_value = {
+                "routing_decision": {
+                    "primary_agent": "work",
+                    "secondary_agents": [],
+                    "confidence": 0.95,
+                    "reasoning": "Work-related content"
+                },
+                "processing_results": {
+                    "work": {"result": "success"}
+                }
+            }
+
+            # Create mock context
+            mock_context = Mock()
+            mock_context.request_id = "test-request-id"
+
+            result = lambda_handler(event, mock_context)
+
+            assert result["statusCode"] == 200
+            
+            # Verify S3 was called with decoded key
+            mock_s3.get_object.assert_called_once_with(
+                Bucket="test-bucket", 
+                Key="transcripts/work/my voice memo 2024-01-01.txt"  # Decoded
+            )
+            
+            # Verify orchestrator received decoded key
+            mock_route.assert_called_once()
+            call_args = mock_route.call_args[1]
+            assert call_args["source_key"] == "transcripts/work/my voice memo 2024-01-01.txt"
+
+    def test_lambda_handler_with_multi_record_event(self):
+        """Test lambda_handler with multiple S3 records.
+        
+        WHY: S3 can batch multiple object notifications.
+        TESTS: All records are processed correctly.
+        VALIDATION: Each record gets its own processing.
+        """
+        event = {
+            "Records": [
+                {
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "transcripts/work/memo1.txt"},
+                    }
+                },
+                {
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "transcripts/memories/memo2.txt"},
+                    }
+                },
+                {
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "transcripts/github_ideas/memo3.txt"},
+                    }
+                }
+            ]
+        }
+
+        # Mock S3 operations
+        mock_s3 = Mock()
+        lambda_fn.router_handler.s3 = mock_s3
+        
+        # Return different content for each file
+        mock_s3.get_object.side_effect = [
+            {"Body": Mock(read=lambda: b"Work transcript")},
+            {"Body": Mock(read=lambda: b"Memory transcript")},
+            {"Body": Mock(read=lambda: b"GitHub idea transcript")}
+        ]
+
+        with patch("lambda_fn.router_handler.route_to_agent") as mock_route:
+            # Return different results for each agent
+            mock_route.side_effect = [
+                {
+                    "routing_decision": {"primary_agent": "work"},
+                    "processing_results": {"work": {"result": "work success"}}
+                },
+                {
+                    "routing_decision": {"primary_agent": "memory"},
+                    "processing_results": {"memory": {"result": "memory success"}}
+                },
+                {
+                    "routing_decision": {"primary_agent": "github"},
+                    "processing_results": {"github": {"result": "github success"}}
+                }
+            ]
+
+            # Create mock context
+            mock_context = Mock()
+            mock_context.request_id = "test-request-id"
+
+            result = lambda_handler(event, mock_context)
+
+            assert result["statusCode"] == 200
+            body = json.loads(result["body"])
+            assert body["message"] == "All transcripts processed successfully"
+            assert body["processed"] == 3
+            assert body["total"] == 3
+            assert len(body["results"]) == 3
+            
+            # Verify all S3 operations
+            assert mock_s3.get_object.call_count == 3
+            assert mock_s3.put_object.call_count == 3
+            
+            # Verify all orchestrator invocations
+            assert mock_route.call_count == 3
+
+    def test_lambda_handler_with_partial_failure(self):
+        """Test lambda_handler when some records fail.
+        
+        WHY: Need to handle partial failures gracefully.
+        TESTS: Multi-status response with error details.
+        VALIDATION: Successful records still processed.
+        """
+        event = {
+            "Records": [
+                {
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "transcripts/work/good.txt"},
+                    }
+                },
+                {
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "transcripts/work/bad.txt"},
+                    }
+                }
+            ]
+        }
+
+        # Mock S3 operations
+        mock_s3 = Mock()
+        lambda_fn.router_handler.s3 = mock_s3
+        
+        # First succeeds, second fails
+        mock_s3.get_object.side_effect = [
+            {"Body": Mock(read=lambda: b"Good transcript")},
+            Exception("S3 GetObject failed")
+        ]
+
+        with patch("lambda_fn.router_handler.route_to_agent") as mock_route:
+            mock_route.return_value = {
+                "routing_decision": {"primary_agent": "work"},
+                "processing_results": {"work": {"result": "success"}}
+            }
+
+            # Create mock context
+            mock_context = Mock()
+            mock_context.request_id = "test-request-id"
+
+            result = lambda_handler(event, mock_context)
+
+            assert result["statusCode"] == 207  # Multi-status
+            body = json.loads(result["body"])
+            assert body["message"] == "Partial success"
+            assert body["processed"] == 1
+            assert body["total"] == 2
+            assert len(body["errors"]) == 1
+            assert body["errors"][0]["error"] == "Failed to download transcript"
+
+    def test_lambda_handler_with_invalid_event(self):
+        """Test lambda_handler with various invalid event formats.
+        
+        WHY: Lambda should handle malformed events gracefully.
+        TESTS: Various invalid event structures.
+        VALIDATION: Appropriate error responses.
+        """
+        test_cases = [
+            (None, "Invalid event format"),
+            ({}, "Missing 'Records' field"),
+            ({"Records": []}, "No records to process"),
+            ({"Records": [{}]}, "Missing 's3' field"),
+            ({"Records": [{"s3": {}}]}, "Incomplete S3 information"),
+        ]
+
+        for event, expected_error in test_cases:
+            result = lambda_handler(event, None)
+            
+            if event is None or "Records" not in (event or {}):
+                assert result["statusCode"] == 400
+            elif not event.get("Records"):
+                assert result["statusCode"] == 200
+            else:
+                assert result["statusCode"] == 500
+                
+            body = json.loads(result["body"])
+            if "error" in body:
+                # Check in main error message or details
+                found = (expected_error in body["error"] or 
+                        expected_error in body.get("details", "") or
+                        any(expected_error in str(err) for err in body.get("errors", [])))
+                assert found, f"Expected '{expected_error}' not found in response: {body}"
+            else:
+                assert expected_error in body.get("message", "")
+
+    def test_lambda_handler_with_special_characters(self):
+        """Test lambda_handler with special characters in S3 keys.
+        
+        WHY: File names can contain various special characters.
+        TESTS: Proper handling of percent-encoded characters.
+        EXAMPLES: &, =, ?, #, etc.
+        """
+        # Test with various encoded special characters
+        encoded_key = "transcripts/work/memo%26notes%3D2024%2D01%2D01%2Etxt"
+        expected_key = "transcripts/work/memo&notes=2024-01-01.txt"
+        
+        event = {
+            "Records": [
+                {
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": encoded_key},
+                    }
+                }
+            ]
+        }
+
+        # Mock S3 operations
+        mock_s3 = Mock()
+        lambda_fn.router_handler.s3 = mock_s3
+        mock_s3.get_object.return_value = {
+            "Body": Mock(read=lambda: b"Test with special chars")
+        }
+
+        with patch("lambda_fn.router_handler.route_to_agent") as mock_route:
+            mock_route.return_value = {
+                "routing_decision": {"primary_agent": "work"},
+                "processing_results": {"work": {"result": "success"}}
+            }
+
+            # Create mock context
+            mock_context = Mock()
+            mock_context.request_id = "test-request-id"
+
+            result = lambda_handler(event, mock_context)
+
+            assert result["statusCode"] == 200
+            
+            # Verify S3 was called with properly decoded key
+            mock_s3.get_object.assert_called_once_with(
+                Bucket="test-bucket", 
+                Key=expected_key
             )

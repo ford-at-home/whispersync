@@ -41,6 +41,7 @@ COST OPTIMIZATION:
 4. Auto-delete Objects: Prevents accumulation of old transcripts
 """
 
+import os
 from aws_cdk import (
     Stack,
     CfnOutput,
@@ -64,7 +65,7 @@ class McpStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, environment: str = "development", **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
-        self.environment = environment
+        self.env_name = environment
         self.is_production = environment == "production"
 
         # KMS Key for enhanced encryption (production only)
@@ -80,7 +81,9 @@ class McpStack(Stack):
         # S3 Bucket for transcript storage and agent output
         # WHY S3: Durable storage for voice transcripts, cost-effective for infrequent access,
         # native event notifications, supports hierarchical organization via prefixes
-        bucket_name = f"voice-mcp-{environment}" if environment != "production" else "voice-mcp"
+        bucket_name = os.environ.get('TRANSCRIPT_BUCKET_NAME', 'macbook-transcriptions')
+        if self.env_name != "production":
+            bucket_name = f"{bucket_name}-{self.env_name}"
         
         bucket = s3.Bucket(
             self, 
@@ -130,7 +133,7 @@ class McpStack(Stack):
         # SNS Topic for alerts and notifications
         alert_topic = sns.Topic(
             self, "WhisperSyncAlerts",
-            topic_name=f"whispersync-alerts-{environment}",
+            topic_name=f"whispersync-alerts-{self.env_name}",
             display_name="WhisperSync System Alerts"
         )
         
@@ -138,12 +141,12 @@ class McpStack(Stack):
         lambda_fn = _lambda.Function(
             self,
             "McpAgentRouterLambda",
-            function_name=f"mcpAgentRouterLambda-{environment}",
+            function_name=f"mcpAgentRouterLambda-{self.env_name}",
             
             # RUNTIME: Python 3.11 for latest features and performance
             runtime=_lambda.Runtime.PYTHON_3_11,
             
-            # HANDLER: Entry point in router_handler.py
+            # HANDLER: Entry point in router_handler.py (full orchestrator version)
             handler="router_handler.lambda_handler",
             
             # CODE: References lambda_fn directory relative to this file
@@ -157,8 +160,9 @@ class McpStack(Stack):
             
             # ENVIRONMENT: Comprehensive runtime configuration
             environment={
-                "BUCKET_NAME": bucket.bucket_name,
-                "WHISPERSYNC_ENV": environment,
+                "TRANSCRIPT_BUCKET_NAME": bucket.bucket_name,
+                "BUCKET_NAME": bucket.bucket_name,  # Keep for backward compatibility
+                "WHISPERSYNC_ENV": self.env_name,
                 "LOG_LEVEL": "WARNING" if self.is_production else "INFO",
                 "ENABLE_METRICS": "true",
                 "ENABLE_XRAY": "true" if self.is_production else "false",
@@ -177,26 +181,27 @@ class McpStack(Stack):
             ),
             
             # SECURITY: Enhanced configuration
-            description=f"WhisperSync voice memo processing ({environment})",
+            description=f"WhisperSync voice memo processing ({self.env_name})",
         )
         
         # Health Check Lambda Function
         health_check_fn = _lambda.Function(
             self,
             "HealthCheckLambda",
-            function_name=f"whispersync-health-check-{environment}",
+            function_name=f"whispersync-health-check-{self.env_name}",
             runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="router_handler.health_check_handler",
+            handler="simple_router.health_check_handler",
             code=_lambda.Code.from_asset(
                 str(Path(__file__).resolve().parent.parent / "lambda_fn")
             ),
             timeout=Duration.seconds(30),
             memory_size=128,
             environment={
-                "BUCKET_NAME": bucket.bucket_name,
-                "WHISPERSYNC_ENV": environment
+                "TRANSCRIPT_BUCKET_NAME": bucket.bucket_name,
+                "BUCKET_NAME": bucket.bucket_name,  # Keep for backward compatibility
+                "WHISPERSYNC_ENV": self.env_name
             },
-            description=f"WhisperSync health check endpoint ({environment})"
+            description=f"WhisperSync health check endpoint ({self.env_name})"
         )
 
         # IAM PERMISSIONS - Enhanced Security with Least Privilege
@@ -260,7 +265,7 @@ class McpStack(Stack):
         # CloudWatch Alarms for Lambda errors
         error_alarm = cloudwatch.Alarm(
             self, "LambdaErrorAlarm",
-            alarm_name=f"whispersync-lambda-errors-{environment}",
+            alarm_name=f"whispersync-lambda-errors-{self.env_name}",
             metric=lambda_fn.metric_errors(
                 period=Duration.minutes(5),
                 statistic="Sum"
@@ -276,7 +281,7 @@ class McpStack(Stack):
         # CloudWatch Alarm for Lambda duration
         duration_alarm = cloudwatch.Alarm(
             self, "LambdaDurationAlarm",
-            alarm_name=f"whispersync-lambda-duration-{environment}",
+            alarm_name=f"whispersync-lambda-duration-{self.env_name}",
             metric=lambda_fn.metric_duration(
                 period=Duration.minutes(5),
                 statistic="Average"
@@ -308,28 +313,28 @@ class McpStack(Stack):
             self, "BucketName",
             value=bucket.bucket_name,
             description="S3 bucket for voice memo transcripts",
-            export_name=f"WhisperSync-BucketName-{environment}"
+            export_name=f"WhisperSync-BucketName-{self.env_name}"
         )
         
         CfnOutput(
             self, "LambdaFunctionName", 
             value=lambda_fn.function_name,
             description="Lambda function handling agent routing",
-            export_name=f"WhisperSync-LambdaFunction-{environment}"
+            export_name=f"WhisperSync-LambdaFunction-{self.env_name}"
         )
         
         CfnOutput(
             self, "HealthCheckFunctionName",
             value=health_check_fn.function_name,
             description="Health check Lambda function",
-            export_name=f"WhisperSync-HealthCheck-{environment}"
+            export_name=f"WhisperSync-HealthCheck-{self.env_name}"
         )
         
         CfnOutput(
             self, "AlertTopicArn",
             value=alert_topic.topic_arn,
             description="SNS topic for system alerts",
-            export_name=f"WhisperSync-AlertTopic-{environment}"
+            export_name=f"WhisperSync-AlertTopic-{self.env_name}"
         )
         
         if kms_key:
@@ -337,7 +342,7 @@ class McpStack(Stack):
                 self, "KMSKeyId",
                 value=kms_key.key_id,
                 description="KMS key for encryption",
-                export_name=f"WhisperSync-KMSKey-{environment}"
+                export_name=f"WhisperSync-KMSKey-{self.env_name}"
             )
         
         # Store references for other methods
