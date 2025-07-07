@@ -1,0 +1,36 @@
+# Code Owners for WhisperSync
+# These owners will be automatically requested for review when someone opens a PR
+
+# Global owners (fallback for any file)
+* @ford-at-home/whispersync-maintainers
+
+# Infrastructure and CDK
+/infrastructure/ @ford-at-home/devops @ford-at-home/cloud-engineers
+*.yml @ford-at-home/devops
+*.yaml @ford-at-home/devops
+
+# Lambda functions and core logic
+/lambda_fn/ @ford-at-home/backend-engineers
+/agents/ @ford-at-home/ai-engineers @ford-at-home/backend-engineers
+
+# Tests
+/tests/ @ford-at-home/qa-engineers @ford-at-home/backend-engineers
+/pytest*.ini @ford-at-home/qa-engineers
+
+# CI/CD and GitHub workflows
+/.github/ @ford-at-home/devops
+/.github/workflows/ @ford-at-home/devops @ford-at-home/release-engineers
+
+# Documentation
+*.md @ford-at-home/technical-writers
+/docs/ @ford-at-home/technical-writers
+
+# Security-sensitive files
+*secret* @ford-at-home/security-team
+*token* @ford-at-home/security-team
+*credential* @ford-at-home/security-team
+requirements*.txt @ford-at-home/security-team
+
+# Python package files
+setup.py @ford-at-home/backend-engineers @ford-at-home/release-engineers
+pyproject.toml @ford-at-home/backend-engineers @ford-at-home/release-engineers

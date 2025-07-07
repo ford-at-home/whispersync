@@ -1,0 +1,149 @@
+name: Release
+
+# Trigger on pushes to main branch
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Get previous tag
+        id: previoustag
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=${PREVIOUS_TAG}" >> $GITHUB_OUTPUT
+          
+      - name: Analyze commits for version bump
+        id: analyze
+        run: |
+          # Analyze commit messages to determine version bump type
+          # Default to patch version bump
+          BUMP_TYPE="patch"
+          
+          # Check commit messages since last tag
+          COMMITS=$(git log ${{ steps.previoustag.outputs.tag }}..HEAD --pretty=format:"%s")
+          
+          # Check for breaking changes (major version bump)
+          if echo "$COMMITS" | grep -q "BREAKING CHANGE:\|!:"; then
+            BUMP_TYPE="major"
+          # Check for features (minor version bump)
+          elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
+            BUMP_TYPE="minor"
+          fi
+          
+          echo "bump_type=${BUMP_TYPE}" >> $GITHUB_OUTPUT
+          
+      - name: Calculate new version
+        id: version
+        run: |
+          PREVIOUS_TAG="${{ steps.previoustag.outputs.tag }}"
+          BUMP_TYPE="${{ steps.analyze.outputs.bump_type }}"
+          
+          # Remove 'v' prefix and split version
+          VERSION=${PREVIOUS_TAG#v}
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+          
+          # Increment based on bump type
+          case $BUMP_TYPE in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "version_without_v=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+          
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog for this release
+          PREVIOUS_TAG="${{ steps.previoustag.outputs.tag }}"
+          
+          # Create changelog file
+          cat > CHANGELOG.md << 'EOF'
+          # Changelog
+          
+          ## ${{ steps.version.outputs.version }} - $(date +%Y-%m-%d)
+          
+          ### Changes since ${{ steps.previoustag.outputs.tag }}
+          
+          EOF
+          
+          # Group commits by type
+          echo "### Features" >> CHANGELOG.md
+          git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s" --grep="^feat" >> CHANGELOG.md || echo "- No new features" >> CHANGELOG.md
+          
+          echo -e "\n\n### Bug Fixes" >> CHANGELOG.md
+          git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s" --grep="^fix" >> CHANGELOG.md || echo "- No bug fixes" >> CHANGELOG.md
+          
+          echo -e "\n\n### Other Changes" >> CHANGELOG.md
+          git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s" --grep -v "^feat\|^fix" >> CHANGELOG.md || echo "- No other changes" >> CHANGELOG.md
+          
+          # Set multiline output
+          echo 'changelog<<EOF' >> $GITHUB_OUTPUT
+          cat CHANGELOG.md >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+          
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          
+      - name: Update version in files
+        run: |
+          # Update version in setup.py, pyproject.toml, or other version files if they exist
+          if [ -f "setup.py" ]; then
+            sed -i "s/version=\".*\"/version=\"${{ steps.version.outputs.version_without_v }}\"/" setup.py
+          fi
+          
+          if [ -f "pyproject.toml" ]; then
+            sed -i "s/version = \".*\"/version = \"${{ steps.version.outputs.version_without_v }}\"/" pyproject.toml
+          fi
+          
+      - name: Create Pull Request for version updates
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump version to ${{ steps.version.outputs.version }}"
+          title: "chore: bump version to ${{ steps.version.outputs.version }}"
+          body: |
+            Automated version bump after release ${{ steps.version.outputs.version }}
+            
+            This PR updates version references in the codebase.
+          branch: version-bump-${{ steps.version.outputs.version }}
+          delete-branch: true
