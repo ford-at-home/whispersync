@@ -91,7 +91,7 @@ jobs:
             --junit-xml=test-results.xml
             
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.11'  # Only upload once
         with:
           file: ./coverage.xml
