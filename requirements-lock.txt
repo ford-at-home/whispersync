@@ -15,7 +15,7 @@ cffi==1.17.1
 charset-normalizer==3.4.2
 click==8.2.1
 constructs==10.4.2
-coverage==7.9.1
+coverage==7.10.2
 cryptography==45.0.4
 deprecated==1.2.18
 flake8==7.3.0
