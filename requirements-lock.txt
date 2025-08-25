@@ -55,7 +55,7 @@ pathspec==0.12.1
 pillow==11.3.0
 platformdirs==4.3.8
 pluggy==1.6.0
-protobuf==5.29.5
+protobuf==6.32.0
 publication==0.0.3
 pyarrow==20.0.0
 pycodestyle==2.14.0
