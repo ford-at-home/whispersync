@@ -1,0 +1,14 @@
+# AWS CDK dependencies
+aws-cdk-lib>=2.0.0
+constructs>=10.0.0
+
+# AWS and GitHub dependencies
+boto3>=1.26.0
+botocore>=1.29.0
+PyGithub>=2.0.0
+
+# Strands SDK (excluding strands-tools for now)
+strands>=0.1.0
+strands-agents>=0.1.0
+
+# Basic dependencies for deployment

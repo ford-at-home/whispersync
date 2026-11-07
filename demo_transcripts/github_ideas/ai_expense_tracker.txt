@@ -1,0 +1,1 @@
+I have an idea for a personal finance app that uses AI to categorize expenses automatically. It would connect to your bank account, analyze spending patterns, and provide insights on budgeting. Maybe call it SmartBudget or ExpenseAI.

@@ -1,0 +1,94 @@
+"""
+Voice Persona Prompts Package
+
+This package contains the system prompts and configurations for the four ElevenLabs voice personas:
+1. British Guardian - Morning/evening summaries
+2. Indian Mystic - Emotional/diary reflections  
+3. Southern Sage - Value-based guidance
+4. The Challenger - Contradiction caller-outer
+"""
+
+from .persona_config import (
+    PersonaType,
+    PersonaConfig,
+    PersonaSelector,
+    PersonaConsistencyManager,
+    get_persona_for_context,
+    PERSONA_REGISTRY
+)
+
+from .british_guardian import (
+    BRITISH_GUARDIAN_SYSTEM_PROMPT,
+    BRITISH_GUARDIAN_CONTEXT_INJECTION,
+    BRITISH_GUARDIAN_VOICE_EXAMPLES,
+    BRITISH_GUARDIAN_FALLBACK_RESPONSES,
+    BRITISH_GUARDIAN_PERSONALITY_RULES
+)
+
+from .indian_mystic import (
+    INDIAN_MYSTIC_SYSTEM_PROMPT,
+    INDIAN_MYSTIC_CONTEXT_INJECTION,
+    INDIAN_MYSTIC_VOICE_EXAMPLES,
+    INDIAN_MYSTIC_FALLBACK_RESPONSES,
+    INDIAN_MYSTIC_PERSONALITY_RULES,
+    INDIAN_MYSTIC_METAPHOR_LIBRARY
+)
+
+from .southern_sage import (
+    SOUTHERN_SAGE_SYSTEM_PROMPT,
+    SOUTHERN_SAGE_CONTEXT_INJECTION,
+    SOUTHERN_SAGE_VOICE_EXAMPLES,
+    SOUTHERN_SAGE_FALLBACK_RESPONSES,
+    SOUTHERN_SAGE_PERSONALITY_RULES,
+    SOUTHERN_SAGE_SAYINGS_LIBRARY
+)
+
+from .challenger import (
+    THE_CHALLENGER_SYSTEM_PROMPT,
+    THE_CHALLENGER_CONTEXT_INJECTION,
+    THE_CHALLENGER_VOICE_EXAMPLES,
+    THE_CHALLENGER_FALLBACK_RESPONSES,
+    THE_CHALLENGER_PERSONALITY_RULES,
+    THE_CHALLENGER_TACTICAL_APPROACHES
+)
+
+__all__ = [
+    # Core classes and functions
+    'PersonaType',
+    'PersonaConfig',
+    'PersonaSelector',
+    'PersonaConsistencyManager',
+    'get_persona_for_context',
+    'PERSONA_REGISTRY',
+    
+    # British Guardian exports
+    'BRITISH_GUARDIAN_SYSTEM_PROMPT',
+    'BRITISH_GUARDIAN_CONTEXT_INJECTION',
+    'BRITISH_GUARDIAN_VOICE_EXAMPLES',
+    'BRITISH_GUARDIAN_FALLBACK_RESPONSES',
+    'BRITISH_GUARDIAN_PERSONALITY_RULES',
+    
+    # Indian Mystic exports
+    'INDIAN_MYSTIC_SYSTEM_PROMPT',
+    'INDIAN_MYSTIC_CONTEXT_INJECTION',
+    'INDIAN_MYSTIC_VOICE_EXAMPLES',
+    'INDIAN_MYSTIC_FALLBACK_RESPONSES',
+    'INDIAN_MYSTIC_PERSONALITY_RULES',
+    'INDIAN_MYSTIC_METAPHOR_LIBRARY',
+    
+    # Southern Sage exports
+    'SOUTHERN_SAGE_SYSTEM_PROMPT',
+    'SOUTHERN_SAGE_CONTEXT_INJECTION',
+    'SOUTHERN_SAGE_VOICE_EXAMPLES',
+    'SOUTHERN_SAGE_FALLBACK_RESPONSES',
+    'SOUTHERN_SAGE_PERSONALITY_RULES',
+    'SOUTHERN_SAGE_SAYINGS_LIBRARY',
+    
+    # Challenger exports
+    'THE_CHALLENGER_SYSTEM_PROMPT',
+    'THE_CHALLENGER_CONTEXT_INJECTION',
+    'THE_CHALLENGER_VOICE_EXAMPLES',
+    'THE_CHALLENGER_FALLBACK_RESPONSES',
+    'THE_CHALLENGER_PERSONALITY_RULES',
+    'THE_CHALLENGER_TACTICAL_APPROACHES'
+]

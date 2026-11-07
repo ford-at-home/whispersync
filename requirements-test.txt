@@ -1,0 +1,114 @@
+# Test Dependencies for WhisperSync E2E Integration Tests
+#
+# WHY THIS FILE EXISTS:
+# - Separates test-only dependencies from production requirements
+# - Enables faster CI/CD builds by excluding test deps from production
+# - Provides flexibility for test environment management
+# - Supports different test execution scenarios (local, CI, AWS)
+
+# Include base requirements
+-r requirements.txt
+
+# Enhanced testing framework
+# WHY pytest-asyncio>=0.21.0: Async test support for Lambda function testing
+# Required for testing async operations in agent coordination
+pytest-asyncio>=0.21.0
+
+# WHY pytest-timeout>=2.1.0: Test timeout management for long-running integration tests
+# Prevents hanging tests in CI/CD pipelines and provides better debugging
+pytest-timeout>=2.1.0
+
+# WHY pytest-xdist>=3.3.0: Parallel test execution for faster CI builds
+# Reduces test suite execution time by running tests in parallel
+pytest-xdist>=3.3.0
+
+# WHY pytest-mock>=3.11.0: Enhanced mocking capabilities
+# Provides better mock management for external service dependencies
+pytest-mock>=3.11.0
+
+# WHY pytest-env>=0.8.2: Environment variable management for tests
+# Ensures consistent test environment across different execution contexts
+pytest-env>=0.8.2
+
+# AWS testing and mocking
+# WHY moto>=4.2.0: Mock AWS services for unit and integration testing
+# Enables testing AWS interactions without incurring costs or requiring real resources
+moto>=4.2.0
+
+# WHY localstack>=2.3.0: Local AWS cloud stack for integration testing
+# Optional alternative to moto for more complex AWS service interactions
+# Commented out by default as it requires Docker and additional setup
+# localstack>=2.3.0
+
+# HTTP testing and mocking
+# WHY responses>=0.23.0: Mock HTTP requests for external API testing
+# Required for mocking GitHub API calls and other external integrations
+responses>=0.23.0
+
+# WHY requests>=2.31.0: HTTP library for API testing
+# Used for direct API calls in integration tests and health checks
+requests>=2.31.0
+
+# Performance and load testing
+# WHY locust>=2.17.0: Load testing framework for performance benchmarks
+# Enables testing system performance under various load conditions
+# Optional for basic testing, required for performance validation
+locust>=2.17.0
+
+# Test data generation
+# WHY faker>=19.0.0: Generate realistic test data for transcripts and scenarios
+# Creates varied test scenarios to validate agent robustness
+faker>=19.0.0
+
+# WHY factory_boy>=3.3.0: Test fixture factories for complex object creation
+# Simplifies creation of test data with proper relationships and constraints
+factory_boy>=3.3.0
+
+# Test reporting and analysis
+# WHY pytest-html>=3.2.0: HTML test reports for better CI/CD integration
+# Provides detailed test results with interactive filtering and navigation
+pytest-html>=3.2.0
+
+# WHY pytest-json-report>=1.5.0: JSON test reports for programmatic analysis
+# Enables automated test result processing and metric collection
+pytest-json-report>=1.5.0
+
+# WHY coverage>=7.3.0: Enhanced code coverage analysis
+# Provides detailed coverage reports including branch coverage
+coverage>=7.3.0
+
+# Security testing
+# WHY safety>=2.3.0: Security vulnerability scanning for dependencies
+# Identifies known security issues in test and production dependencies
+safety>=2.3.0
+
+# WHY bandit>=1.7.0: Security linter for Python code
+# Scans for common security issues in application and test code
+bandit>=1.7.0
+
+# Development utilities
+# WHY ipython>=8.15.0: Enhanced interactive Python shell for debugging
+# Improves debugging experience during test development and troubleshooting
+ipython>=8.15.0
+
+# WHY pdbpp>=0.10.3: Enhanced Python debugger
+# Provides better debugging capabilities for complex test scenarios
+pdbpp>=0.10.3
+
+# Documentation testing
+# WHY doc8>=1.1.0: Style checker for documentation
+# Ensures documentation quality and consistency
+doc8>=1.1.0
+
+# Type checking for tests
+# WHY mypy>=1.5.0: Static type checking for Python
+# Catches type-related bugs in test code and improves code quality
+mypy>=1.5.0
+
+# WHY types-requests>=2.31.0: Type stubs for requests library
+# Enables type checking for HTTP-related test code
+types-requests>=2.31.0
+
+# WHY types-boto3>=1.0.0: Type stubs for boto3
+# Provides type hints for AWS SDK usage in tests
+types-boto3>=1.0.2

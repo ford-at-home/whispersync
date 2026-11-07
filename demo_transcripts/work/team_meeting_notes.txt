@@ -1,0 +1,1 @@
+Had a productive meeting with the development team about the new API endpoints. We decided to use GraphQL instead of REST for better flexibility. Sarah will lead the frontend integration, Mike will handle the database schema, and I'll work on the authentication middleware.

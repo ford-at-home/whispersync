@@ -1,0 +1,1 @@
+Finished preparing for the quarterly review meeting. Our team delivered 85% of planned features, which is above the company average. The main challenges were scope creep on the dashboard project and unexpected technical debt in the legacy system. For next quarter, I'm proposing we allocate 20% of time for refactoring.

@@ -1,0 +1,27 @@
+# WHY THESE DEPENDENCIES:
+
+# Streamlit: Web UI framework chosen for rapid prototyping
+# - Zero JavaScript required, perfect for Python ML teams
+# - Built-in widgets match demo needs (progress bars, JSON viewers)
+streamlit>=1.28.0
+
+# AWS SDK: Required for demo mode fallback to real AWS services
+# - Enables testing actual S3/Lambda pipeline when ready
+# - Version alignment with Lambda runtime prevents compatibility issues
+boto3>=1.28.0
+
+# Strands SDK: Core AI agent framework
+# - Main package provides Agent class and decorators
+# - Tools package provides pre-built integrations (Bedrock, etc.)
+strands>=0.1.0
+strands-tools>=0.1.0
+
+# OpenTelemetry: Observability stack for distributed tracing
+# - Critical for debugging multi-agent workflows
+# - OTLP export enables integration with monitoring platforms
+# - Botocore instrumentation traces AWS API calls automatically
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp>=1.20.0
+opentelemetry-instrumentation-botocore>=0.41b0
+opentelemetry-instrumentation-logging>=0.41b0
